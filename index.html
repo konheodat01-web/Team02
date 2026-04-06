@@ -95,26 +95,33 @@
             <!-- Table Section -->
             <div class="table-section">
                 <div class="table-header" style="margin-top: 24px; margin-bottom: 16px;">
-                    <h3 style="font-size: 16px; font-weight: 600; color: #F3F4F6;">Chi tiết Hiệu Suất Từng Dự Án</h3>
+                    <h3 style="font-size: 16px; font-weight: 600; color: #F3F4F6;">Bảng Theo Dõi Tổng Hợp</h3>
                 </div>
-                <div class="table-responsive" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; overflow: hidden;">
-                    <table class="data-table">
+                <div class="table-responsive" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; overflow-x: auto;">
+                    <table class="data-table spreadsheet-table">
                         <thead>
                             <tr>
-                                <th>TÊN WEBSITE</th>
-                                <th>LƯỢT CLICK</th>
-                                <th>TĂNG/GIẢM CLICK</th>
-                                <th>LƯỢT HIỂN THỊ</th>
-                                <th>TĂNG/GIẢM IMPRESSIONS</th>
+                                <th>Website</th>
+                                <th>Số lượng Keyword</th>
+                                <th>Clicks (Tuần này)</th>
+                                <th>Impression (Tuần này)</th>
+                                <th>Clicks (Tuần trước)</th>
+                                <th>So sánh Tuần (%)</th>
+                                <th>Clicks (Tháng này)</th>
+                                <th>Clicks (Tháng trước)</th>
+                                <th>So sánh Tháng (%)</th>
                             </tr>
                         </thead>
                         <tbody id="siteTableBody">
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 24px; color: #6B7280; font-style: italic;">
+                                <td colspan="9" style="text-align: center; padding: 24px; color: #6B7280; font-style: italic;">
                                     Đang đợi dữ liệu GSC...
                                 </td>
                             </tr>
                         </tbody>
+                        <tfoot id="siteTableFoot" style="display: none;">
+                            <!-- Sẽ bơm bằng Javascript -->
+                        </tfoot>
                     </table>
                 </div>
             </div>

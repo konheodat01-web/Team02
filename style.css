@@ -570,3 +570,12 @@ body {
 .pct-positive { background: rgba(16, 185, 129, 0.1); color: #10B981; }
 .pct-negative { background: rgba(239, 68, 68, 0.1); color: #EF4444; }
 .pct-neutral { background: rgba(107, 114, 128, 0.1); color: #9CA3AF; }
+
+
+/* Spreadsheet Table Extensions */
+.spreadsheet-table th, .spreadsheet-table td { padding: 12px 16px; font-size: 13px; text-align: right; }
+.spreadsheet-table th:first-child, .spreadsheet-table td:first-child { text-align: left; }
+.spreadsheet-table tfoot td { font-weight: 700; color: #F3F4F6; background: rgba(99, 102, 241, 0.1); border-top: 2px solid rgba(255, 255, 255, 0.1); }
+.keyword-input { width: 70px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #F3F4F6; padding: 4px 8px; border-radius: 4px; text-align: right; outline: none; transition: all 0.2s; }
+.keyword-input:focus { border-color: #6366F1; background: rgba(0, 0, 0, 0.2); }
+.keyword-input::-webkit-inner-spin-button { -webkit-appearance: none; }
