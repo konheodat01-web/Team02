@@ -240,9 +240,8 @@ function saveManualData() {
     }
 }
 
-
 // GSC Integration
-const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+const CLIENT_ID = '910348783245-iu1mru28v684ds523abgnqe7bshs5ppd.apps.googleusercontent.com';
 let tokenClient;
 
 function initGoogleAuth() {
@@ -253,7 +252,7 @@ function initGoogleAuth() {
         callback: (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
                 fetchGSCData(tokenResponse.access_token);
-                document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> �� k?t n?i';
+                document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
                 document.getElementById('gscLoginBtn').classList.replace('btn-secondary', 'btn-primary');
                 lucide.createIcons();
             }
@@ -262,7 +261,7 @@ function initGoogleAuth() {
     const loginBtn = document.getElementById('gscLoginBtn');
     if(loginBtn) {
         loginBtn.addEventListener('click', () => {
-            if(CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('B?n c?n di?n CLIENT_ID v�o file app.js tru?c!'); return; }
+            if(CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('Bạn cần điền CLIENT_ID vào file app.js trước!'); return; }
             tokenClient.requestAccessToken({ prompt: 'consent' });
         });
     }
@@ -272,22 +271,48 @@ async function fetchGSCData(accessToken) {
     try {
         const siteRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites', { headers: { Authorization: 'Bearer ' + accessToken } });
         const siteData = await siteRes.json();
+        
         if(siteData.siteEntry && siteData.siteEntry.length > 0) {
             const targetSite = siteData.siteEntry[0].siteUrl;
-            const today = new Date(); const lastWeek = new Date(today); lastWeek.setDate(lastWeek.getDate() - 7);
+            
+            const today = new Date(); 
+            const lastWeek = new Date(today); 
+            lastWeek.setDate(lastWeek.getDate() - 7);
             const formatDate = (date) => date.toISOString().split('T')[0];
+            
             const body = { startDate: formatDate(lastWeek), endDate: formatDate(today), dimensions: ['date'] };
+            
             const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(targetSite) + '/searchAnalytics/query', {
-                method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+                method: 'POST', 
+                headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(body)
             });
             const statsData = await statsRes.json();
+            
             let totalClicks = 0; let totalImp = 0;
-            if(statsData.rows) { statsData.rows.forEach(r => { totalClicks += r.clicks; totalImp += r.impressions; }); }
-            saveCustomStat('click', totalClicks.toLocaleString()); saveCustomStat('impression', totalImp.toLocaleString());
+            if(statsData.rows) { 
+                statsData.rows.forEach(r => { 
+                    totalClicks += r.clicks; 
+                    totalImp += r.impressions; 
+                }); 
+            }
+            
+            // Format number using shorthand
+            const clickText = totalClicks > 1000 ? (totalClicks/1000).toFixed(1) + 'K' : totalClicks;
+            const impText = totalImp > 1000 ? (totalImp/1000).toFixed(1) + 'K' : totalImp;
+            
+            saveCustomStat('click', clickText); 
+            saveCustomStat('impression', impText);
+            
             renderDashboard(currentPeriod);
-            alert('�� t?i th�nh c�ng Clicks/Impressions t?: ' + targetSite);
-        } else { alert('T�i kho?n chua c� site Search Console!'); }
-    } catch (err) { console.error(err); alert('L?i l?y GSC Data!'); }
+            alert('Đã tải thành công Clicks/Impressions từ tài khoản Search Console của bạn: ' + targetSite);
+        } else { 
+            alert('Tài khoản chưa có site Search Console!'); 
+        }
+    } catch (err) { 
+        console.error(err); 
+        alert('Lỗi lấy GSC Data! Vui lòng thao tác lại.'); 
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => { initGoogleAuth(); });
