@@ -90,6 +90,27 @@
         </main>
     </div>
 
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chỉnh sửa số liệu</h3>
+                <button class="close-modal-btn" id="closeModalBtn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editCardId">
+                <div class="form-group">
+                    <label for="editValueInput">Nhập số liệu mới (<span id="editCardName"></span>)</label>
+                    <input type="text" id="editValueInput" class="form-control" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelEditBtn">Hủy</button>
+                <button class="btn btn-primary" id="saveEditBtn">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

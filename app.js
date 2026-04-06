@@ -44,6 +44,18 @@ const dataStore = {
 
 let mainChartInstance = null;
 let impressionChartInstance = null;
+let currentPeriod = 'weekly';
+
+// Local Storage handler
+function getCustomStats() {
+    return JSON.parse(localStorage.getItem('customStats') || '{}');
+}
+
+function saveCustomStat(id, value) {
+    const customStats = getCustomStats();
+    customStats[id] = value;
+    localStorage.setItem('customStats', JSON.stringify(customStats));
+}
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -62,36 +74,52 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.classList.add('active');
 
             // Render new data
-            const period = e.target.dataset.period;
-            renderDashboard(period);
+            currentPeriod = e.target.dataset.period;
+            renderDashboard(currentPeriod);
         });
     });
+
+    // Modal Events
+    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+    document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
+    document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
 });
 
 function renderDashboard(period) {
     const data = dataStore[period];
     renderCards(data.stats);
     renderCharts(data);
-    // Re-create icons for newly injected cards
     lucide.createIcons();
 }
 
 function renderCards(stats) {
     const grid = document.getElementById('statsGrid');
     grid.innerHTML = ''; // Clear previous
+    const customStats = getCustomStats();
 
     stats.forEach(stat => {
         const changeClass = stat.isPositive ? 'positive' : 'negative';
         const changeIcon = stat.isPositive ? 'trending-up' : 'trending-down';
+        
+        // Retrieve custom manual value if exists
+        const displayValue = customStats[stat.id] !== undefined ? customStats[stat.id] : stat.value;
+        
+        const canEdit = (stat.id === 'website' || stat.id === 'keyword');
+        const editBtnHTML = canEdit 
+            ? `<button class="edit-btn" onclick="openModal('${stat.id}', '${stat.title}', '${displayValue}')"><i data-lucide="edit-2" style="width: 14px; height: 14px;"></i></button>`
+            : '';
 
         const card = document.createElement('div');
         card.className = 'stat-card';
         card.innerHTML = `
             <div class="stat-header">
-                <span>${stat.title}</span>
+                <div class="flex-row-center">
+                    <span>${stat.title}</span>
+                    ${editBtnHTML}
+                </div>
                 <i data-lucide="${stat.icon}" class="stat-icon"></i>
             </div>
-            <div class="stat-value">${stat.value}</div>
+            <div class="stat-value">${displayValue}</div>
             <div class="stat-footer">
                 <span class="stat-change ${changeClass}">
                     <i data-lucide="${changeIcon}" style="width: 14px; height: 14px;"></i>
@@ -105,14 +133,10 @@ function renderCards(stats) {
 }
 
 function renderCharts(data) {
-    // Destroy previous instances if exist
     if(mainChartInstance) mainChartInstance.destroy();
     if(impressionChartInstance) impressionChartInstance.destroy();
 
-    // 1. Main Chart (Traffic & Clicks)
     const mainCtx = document.getElementById('mainChart').getContext('2d');
-    
-    // Create Gradient for Traffic
     const trafficGradient = mainCtx.createLinearGradient(0, 0, 0, 400);
     trafficGradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)'); // primary
     trafficGradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
@@ -148,49 +172,20 @@ function renderCharts(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: {
-                    position: 'top',
-                    labels: { boxWidth: 12, usePointStyle: true }
-                },
-                tooltip: {
-                    backgroundColor: '#1C2433',
-                    titleColor: '#F3F4F6',
-                    bodyColor: '#D1D5DB',
-                    borderColor: '#2D3748',
-                    borderWidth: 1,
-                    padding: 12
-                }
+                legend: { position: 'top', labels: { boxWidth: 12, usePointStyle: true } },
+                tooltip: { backgroundColor: '#1C2433', titleColor: '#F3F4F6', bodyColor: '#D1D5DB', borderColor: '#2D3748', borderWidth: 1, padding: 12 }
             },
             scales: {
-                x: {
-                    grid: { color: '#2D3748', drawBorder: false }
-                },
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    grid: { color: '#2D3748', drawBorder: false },
-                    ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } }
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    grid: { drawOnChartArea: false },
-                    ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } }
-                }
+                x: { grid: { color: '#2D3748', drawBorder: false } },
+                y: { type: 'linear', display: true, position: 'left', grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } } },
+                y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } } }
             }
         }
     });
 
-    // 2. Impression Chart (Bar)
     const impCtx = document.getElementById('impressionChart').getContext('2d');
-    
     const barGradient = impCtx.createLinearGradient(0, 0, 0, 400);
     barGradient.addColorStop(0, '#8B5CF6'); // Purple
     barGradient.addColorStop(1, '#6366F1'); // Indigo
@@ -199,35 +194,48 @@ function renderCharts(data) {
         type: 'bar',
         data: {
             labels: data.impressionChart.labels,
-            datasets: [{
-                label: 'Impressions',
-                data: data.impressionChart.data,
-                backgroundColor: barGradient,
-                borderRadius: 6,
-                borderSkipped: false
-            }]
+            datasets: [{ label: 'Impressions', data: data.impressionChart.data, backgroundColor: barGradient, borderRadius: 6, borderSkipped: false }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#1C2433',
-                    titleColor: '#F3F4F6',
-                    bodyColor: '#D1D5DB',
-                    borderColor: '#2D3748',
-                    borderWidth: 1,
-                    padding: 12
-                }
+                tooltip: { backgroundColor: '#1C2433', titleColor: '#F3F4F6', bodyColor: '#D1D5DB', borderColor: '#2D3748', borderWidth: 1, padding: 12 }
             },
             scales: {
                 x: { grid: { display: false } },
-                y: {
-                    grid: { color: '#2D3748', drawBorder: false },
-                    ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } }
-                }
+                y: { grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } } }
             }
         }
     });
+}
+
+// Modal Handlers
+function openModal(id, title, currentValue) {
+    document.getElementById('editCardId').value = id;
+    document.getElementById('editCardName').innerText = title;
+    document.getElementById('editValueInput').value = currentValue.replace(/,/g, '');
+    document.getElementById('editModal').classList.add('active');
+    document.getElementById('editValueInput').focus();
+}
+
+function closeModal() {
+    document.getElementById('editModal').classList.remove('active');
+}
+
+function saveManualData() {
+    const id = document.getElementById('editCardId').value;
+    let value = document.getElementById('editValueInput').value.trim();
+    
+    // Add commas back if it's a raw number roughly
+    if (!isNaN(value) && value !== '') {
+        value = Number(value).toLocaleString('en-US');
+    }
+    
+    if(value !== '') {
+        saveCustomStat(id, value);
+        renderDashboard(currentPeriod);
+        closeModal();
+    }
 }
