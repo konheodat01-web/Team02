@@ -556,3 +556,17 @@ body {
 @keyframes spin { 100% { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
 .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+
+/* Table Styles */
+.data-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.data-table th { padding: 16px 24px; color: #9CA3AF; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.data-table td { padding: 16px 24px; color: #F3F4F6; border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: all 0.2s; }
+.data-table tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.site-name-col { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.domain-icon { width: 24px; height: 24px; border-radius: 4px; object-fit: contain; background: #FFF; padding: 2px; }
+.pct-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.pct-positive { background: rgba(16, 185, 129, 0.1); color: #10B981; }
+.pct-negative { background: rgba(239, 68, 68, 0.1); color: #EF4444; }
+.pct-neutral { background: rgba(107, 114, 128, 0.1); color: #9CA3AF; }

@@ -7,7 +7,8 @@ let impressionChartInstance = null;
 let currentPeriod = 'weekly';
 
 // Global Data Storage for GSC
-let globalGSCData = null; // Stores aggregated 60-day timeline { '2023-01-01': { clicks: 0, impressions: 0 } }
+// Structure: { 'sc-domain:vidcogroup.com': { '2023-01-01': {clicks..., impressions...} } }
+let globalGSCData = null; 
 let isGscConnected = false;
 
 // Mock Data structure (used when not logged in)
@@ -67,11 +68,15 @@ function formatShort(num) {
 }
 
 // Calculate percentage change
-function calcChange(current, previous) {
-    if(previous === 0) return current > 0 ? '+100%' : '0%';
+function calcChangeObj(current, previous) {
+    if(previous === 0) return { str: current > 0 ? '+100%' : '0%', class: current > 0 ? 'pct-positive' : 'pct-neutral', isPositive: current > 0 };
     const pct = ((current - previous) / previous) * 100;
     const sign = pct > 0 ? '+' : '';
-    return `${sign}${pct.toFixed(1)}%`;
+    let classStr = 'pct-neutral';
+    if(pct > 0) classStr = 'pct-positive';
+    else if(pct < 0) classStr = 'pct-negative';
+    
+    return { str: `${sign}${pct.toFixed(1)}%`, class: classStr, isPositive: pct >= 0 };
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -109,75 +114,125 @@ function renderDashboard(period) {
 function processAndRenderRealData(period) {
     // Generate dates sequentially from today backwards
     const dates = [];
+    const todayStr = new Date().toISOString().split('T')[0];
     for(let i = 0; i < 60; i++) {
         let d = new Date();
         d.setDate(d.getDate() - i);
         dates.unshift(d.toISOString().split('T')[0]); // Ascending order
     }
 
-    // Prepare variables based on period
     const isWeekly = (period === 'weekly');
     const rangeSize = isWeekly ? 7 : 30;
     
-    // Arrays for charting
     const currentDates = dates.slice(-rangeSize);
     const previousDates = dates.slice(-(rangeSize * 2), -rangeSize);
 
-    let currentClicksObj = [];
-    let previousClicksObj = [];
-    let currentImpsObj = [];
-
-    // Tally up
     let totalCurClicks = 0, totalPrevClicks = 0;
     let totalCurImp = 0, totalPrevImp = 0;
 
-    // Current Range calculation
-    currentDates.forEach(dt => {
-        const item = globalGSCData[dt] || { clicks: 0, impressions: 0 };
-        currentClicksObj.push(item.clicks);
-        currentImpsObj.push(item.impressions);
-        totalCurClicks += item.clicks;
-        totalCurImp += item.impressions;
+    const chartCurrentClicks = new Array(rangeSize).fill(0);
+    const chartPrevClicks = new Array(rangeSize).fill(0);
+    const chartCurrentImp = new Array(rangeSize).fill(0);
+
+    const siteBreakdown = [];
+
+    // Loop through all sites
+    Object.keys(globalGSCData).forEach(siteUrl => {
+        const siteData = globalGSCData[siteUrl];
+        let curClick = 0, prevClick = 0;
+        let curImp = 0, prevImp = 0;
+
+        // Current dates
+        currentDates.forEach((dt, idx) => {
+            const item = siteData[dt] || { clicks: 0, impressions: 0 };
+            curClick += item.clicks;
+            curImp += item.impressions;
+            
+            chartCurrentClicks[idx] += item.clicks;
+            chartCurrentImp[idx] += item.impressions;
+        });
+
+        // Previous dates
+        previousDates.forEach((dt, idx) => {
+            const item = siteData[dt] || { clicks: 0, impressions: 0 };
+            prevClick += item.clicks;
+            prevImp += item.impressions;
+            
+            chartPrevClicks[idx] += item.clicks;
+        });
+
+        totalCurClicks += curClick;
+        totalCurImp += curImp;
+        totalPrevClicks += prevClick;
+        totalPrevImp += prevImp;
+
+        // Extract domain visually
+        const cleanDomain = siteUrl.replace('sc-domain:', '').replace('https://', '').replace('/', '');
+        
+        siteBreakdown.push({
+            domain: cleanDomain,
+            curClick, prevClick,
+            curImp, prevImp
+        });
     });
 
-    // Previous Range calculation
-    previousDates.forEach(dt => {
-        const item = globalGSCData[dt] || { clicks: 0, impressions: 0 };
-        previousClicksObj.push(item.clicks);
-        totalPrevClicks += item.clicks;
-        totalPrevImp += item.impressions;
-    });
-
-    // Generate Chart Labels (e.g., remove year for brevity)
+    // Generate Chart Labels
     const chartLabels = currentDates.map(dt => dt.substring(5).replace('-','/'));
 
     // Construct the stats array
     const trendStr = isWeekly ? 'vs tuần trước' : 'vs tháng trước';
-    const clickChange = calcChange(totalCurClicks, totalPrevClicks);
-    const impChange = calcChange(totalCurImp, totalPrevImp);
+    const clickChange = calcChangeObj(totalCurClicks, totalPrevClicks);
+    const impChange = calcChangeObj(totalCurImp, totalPrevImp);
 
     const stats = [
         { id: 'website', title: 'Website đang chạy', value: '42', change: '+2', trend: trendStr, isPositive: true, icon: 'globe' },
         { id: 'keyword', title: 'Từ khóa lên Top', value: '1,280', change: '+15%', trend: trendStr, isPositive: true, icon: 'key' },
-        { id: 'click_real', title: 'Lượt Click', value: formatShort(totalCurClicks), change: clickChange, trend: trendStr, isPositive: totalCurClicks >= totalPrevClicks, icon: 'mouse-pointer-click' },
-        { id: 'impression_real', title: 'Lượt hiển thị', value: formatShort(totalCurImp), change: impChange, trend: trendStr, isPositive: totalCurImp >= totalPrevImp, icon: 'eye' }
+        { id: 'click_real', title: 'Lượt Click', value: formatShort(totalCurClicks), change: clickChange.str, trend: trendStr, isPositive: clickChange.isPositive, icon: 'mouse-pointer-click' },
+        { id: 'impression_real', title: 'Lượt hiển thị', value: formatShort(totalCurImp), change: impChange.str, trend: trendStr, isPositive: impChange.isPositive, icon: 'eye' }
     ];
 
     const chartData = {
-        mainChart: {
-            labels: chartLabels,
-            current: currentClicksObj,
-            previous: previousClicksObj
-        },
-        impressionChart: {
-            labels: chartLabels,
-            data: currentImpsObj
-        }
+        mainChart: { labels: chartLabels, current: chartCurrentClicks, previous: chartPrevClicks },
+        impressionChart: { labels: chartLabels, data: chartCurrentImp }
     };
 
     renderCards(stats);
     renderCharts(chartData);
+    
+    // Render DataTable
+    siteBreakdown.sort((a,b) => b.curClick - a.curClick);
+    renderDataTable(siteBreakdown);
+
     lucide.createIcons();
+}
+
+function renderDataTable(sites) {
+    const tbody = document.getElementById('siteTableBody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+
+    sites.forEach(site => {
+        const tr = document.createElement('tr');
+        const clickTrend = calcChangeObj(site.curClick, site.prevClick);
+        const impTrend = calcChangeObj(site.curImp, site.prevImp);
+        
+        // Favicon builder
+        const faviconUrl = 'https://www.google.com/s2/favicons?domain=' + site.domain + '&sz=64';
+
+        tr.innerHTML = `
+            <td>
+                <div class="site-name-col">
+                    <img src="${faviconUrl}" class="domain-icon" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5Y2EzYWYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCI+PC9jaXJjbGU+PGxpbmUgeDE9IjIiIHkxPSIxMiIgeDI9IjIyIiB5Mj0iMTIiPjwvbGluZT48cGF0aCBkPSJNMTIgMmExNS4zIDE1LjMgMCAwIDEgNCAxMGExNS4zIDE1LjMgMCAwIDEtNCAxMCAxNS4zIDE1LjMgMCAwIDEtNC0xMCAxNS4zIDE1LjMgMCAwIDEgNC0xMHoiPjwvcGF0aD48L3N2Zz4='">
+                    ${site.domain}
+                </div>
+            </td>
+            <td style="font-weight: 600;">${site.curClick.toLocaleString('en-US')}</td>
+            <td><span class="pct-badge ${clickTrend.class}">${clickTrend.str}</span></td>
+            <td>${site.curImp.toLocaleString('en-US')}</td>
+            <td><span class="pct-badge ${impTrend.class}">${impTrend.str}</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
 function renderCards(stats) {
@@ -189,9 +244,7 @@ function renderCards(stats) {
         const changeClass = stat.isPositive ? 'positive' : 'negative';
         const changeIcon = stat.isPositive ? 'trending-up' : 'trending-down';
         
-        // Retrieve custom manual value if exists
         const displayValue = customStats[stat.id] !== undefined ? customStats[stat.id] : stat.value;
-        
         const canEdit = (stat.id === 'website' || stat.id === 'keyword');
         const editBtnHTML = canEdit 
             ? `<button class="edit-btn" onclick="openModal('${stat.id}', '${stat.title}', '${displayValue}')"><i data-lucide="edit-2" style="width: 14px; height: 14px;"></i></button>`
@@ -247,7 +300,7 @@ function renderCharts(data) {
                 {
                     label: 'Clicks Kỳ Trước',
                     data: data.mainChart.previous,
-                    borderColor: '#6B7280', // Gray dashed
+                    borderColor: '#6B7280', 
                     backgroundColor: 'transparent',
                     borderWidth: 2,
                     borderDash: [5, 5],
@@ -405,22 +458,17 @@ async function fetchGSCData(accessToken, isSilent = false) {
             return;
         }
 
-        // Lấy biên độ 60 ngày
         const endDt = new Date(); 
         const startDt = new Date(endDt); 
-        startDt.setDate(startDt.getDate() - 59); // 60 days included
+        startDt.setDate(startDt.getDate() - 59); 
 
         const formatDate = (date) => date.toISOString().split('T')[0];
         const bodyStyle = { startDate: formatDate(startDt), endDate: formatDate(endDt), dimensions: ['date'] };
 
-        // Khởi tạo globalGSCData rỗng
-        let aggregated = {};
-        for(let i=0; i<60; i++) {
-            let d = new Date(); d.setDate(d.getDate() - i);
-            aggregated[formatDate(d)] = { clicks: 0, impressions: 0 };
-        }
+        // Cấu trúc Data: { 'vidcogroup.com': { '2023-01-01': {clicks...} } }
+        let siteAggregated = {};
+        matchedSites.forEach(s => { siteAggregated[s.siteUrl] = {}; });
 
-        // Parallel Requests
         await Promise.all(matchedSites.map(async (siteObj) => {
             try {
                 const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
@@ -431,17 +479,17 @@ async function fetchGSCData(accessToken, isSilent = false) {
                 const statsData = await statsRes.json();
                 if(statsData.rows) { 
                     statsData.rows.forEach(r => { 
-                        const dateStr = r.keys[0]; // "YYYY-MM-DD"
-                        if(aggregated[dateStr]) {
-                            aggregated[dateStr].clicks += r.clicks; 
-                            aggregated[dateStr].impressions += r.impressions; 
-                        }
+                        const dateStr = r.keys[0]; 
+                        siteAggregated[siteObj.siteUrl][dateStr] = {
+                            clicks: r.clicks,
+                            impressions: r.impressions
+                        };
                     }); 
                 }
             } catch(e) { console.error('Lỗi khi tải:', siteObj.siteUrl); }
         }));
         
-        globalGSCData = aggregated;
+        globalGSCData = siteAggregated;
         setLoginState(false);
         renderDashboard(currentPeriod);
         
