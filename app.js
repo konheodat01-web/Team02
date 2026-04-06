@@ -356,15 +356,62 @@ function saveManualData() {
 
 const CLIENT_ID = '910348783245-iu1mru28v684ds523abgnqe7bshs5ppd.apps.googleusercontent.com';
 let tokenClient;
+const JSON_BLOB_URL = 'https://jsonblob.com/api/jsonBlob/019d6221-1176-7df0-a14c-3cb30f3958cf';
+
+async function syncToCloud(data) {
+    try {
+        await fetch(JSON_BLOB_URL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ timestamp: Date.now(), gsc: data })
+        });
+        console.log("Đã đẩy dữ liệu lên Trạm Trung Chuyển Không Gian!");
+    } catch(e) { console.error("Lỗi đồng bộ Cloud:", e); }
+}
+
+async function loadFromCloud() {
+    try {
+        const res = await fetch(JSON_BLOB_URL, { cache: 'no-store' });
+        const data = await res.json();
+        if(data && data.gsc) {
+            globalGSCData = data.gsc;
+            isGscConnected = true;
+            renderDashboard(currentPeriod);
+            
+            const t = new Date(data.timestamp);
+            const timeStr = ('0'+t.getHours()).slice(-2) + ':' + ('0'+t.getMinutes()).slice(-2) + ' ' + ('0'+t.getDate()).slice(-2) + '/' + ('0'+(t.getMonth()+1)).slice(-2);
+            
+            let badge = document.getElementById('cloudSyncBadge');
+            if(!badge) {
+                badge = document.createElement('div');
+                badge.id = 'cloudSyncBadge';
+                badge.style.cssText = 'margin-left: 12px; margin-right: 12px; font-size: 11px; color: #10B981; font-weight: 500; background: rgba(16, 185, 129, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);';
+                
+                // insert to header actions
+                const actions = document.querySelector('.header-actions');
+                if(actions) actions.insertBefore(badge, actions.firstChild);
+            }
+            badge.innerHTML = `<i data-lucide="cloud-download" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:4px;"></i> Đã nạp Dữ liệu Cloud (${timeStr})`;
+            lucide.createIcons();
+            
+            // set Login State normal
+            const btn = document.getElementById('gscLoginBtn');
+            if(btn) { btn.innerHTML = '<i data-lucide="refresh-ccw" style="width: 16px;"></i> Nạp lại lên Cloud'; btn.classList.replace('btn-secondary', 'btn-primary'); }
+            
+            return true;
+        }
+    } catch(e) { console.error("Cloud Trống:", e); }
+    return false;
+}
 
 function setLoginState(isLoading) {
     const btn = document.getElementById('gscLoginBtn');
     if (!btn) return;
     if (isLoading) {
-        btn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i> Đang tải dữ liệu...';
+        btn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i> Google đang chạy...';
         btn.classList.add('disabled'); btn.disabled = true;
     } else {
-        btn.innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
+        btn.innerHTML = '<i data-lucide="refresh-ccw" style="width: 16px;"></i> Nạp lại lên Cloud';
         btn.classList.remove('disabled'); btn.classList.replace('btn-secondary', 'btn-primary');
         btn.disabled = false; isGscConnected = true;
     }
@@ -372,6 +419,9 @@ function setLoginState(isLoading) {
 }
 
 function initGoogleAuth() {
+    // Luôn ưu tiên kéo từ Cloud nếu có, giúp người dùng khác xem được ngay
+    loadFromCloud();
+
     if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID, scope: 'https://www.googleapis.com/auth/webmasters.readonly', prompt: '',
@@ -386,10 +436,6 @@ function initGoogleAuth() {
 
     const loginBtn = document.getElementById('gscLoginBtn');
     if(loginBtn) loginBtn.addEventListener('click', () => { tokenClient.requestAccessToken({ prompt: 'consent' }); });
-
-    const savedToken = localStorage.getItem('gsc_token');
-    const expiry = localStorage.getItem('gsc_token_expiry');
-    if (savedToken && expiry && Date.now() < parseInt(expiry)) fetchGSCData(savedToken, true);
 }
 
 async function fetchGSCData(accessToken, isSilent = false) {
@@ -403,7 +449,7 @@ async function fetchGSCData(accessToken, isSilent = false) {
             btn.innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC';
             btn.classList.replace('btn-primary', 'btn-secondary'); btn.disabled = false;
             lucide.createIcons();
-            if(!isSilent) alert('Phiên đăng nhập GSC đã hết hạn. Vui lòng kết nối lại!');
+            if(!isSilent) alert('Quyền truy cập GSC tạm thời hết hạn. Vui lòng bấm Nạp lại bản mới!');
             return;
         }
 
@@ -445,10 +491,16 @@ async function fetchGSCData(accessToken, isSilent = false) {
         }));
         
         globalGSCData = siteAggregated;
+        isGscConnected = true;
+        
+        console.log("Đang tải dữ liệu thực tiễn và đồng bộ máy chủ Cloud...");
+        await syncToCloud(siteAggregated);
+        
         setLoginState(false);
         renderDashboard(currentPeriod);
+        loadFromCloud(); // Gọi lại phát nữa để render cái khung xanh lá cây UI
         
-        if(!isSilent) alert(`Hoàn tất đồng bộ dữ liệu thời gian thực từ ${matchedSites.length} websites!`);
+        if(!isSilent) alert(`Đồng bộ Google GSC xong! Bản cập nhật mới đã được đẩy lên Trạm Cloud cho các nhân viên khác xem.`);
     } catch (err) { 
         console.error(err); setLoginState(false);
         if(!isSilent) alert('Lỗi tải dữ liệu. Vui lòng F5 thử lại.'); 
