@@ -7,7 +7,7 @@ let impressionChartInstance = null;
 let currentPeriod = 'weekly';
 
 // Global Data Storage for GSC
-let globalGSCData = null; 
+let globalGSCData = null;
 let isGscConnected = false;
 let globalSiteBreakdown = []; // Cache for Table Totals
 
@@ -17,6 +17,7 @@ function saveCustomStat(id, value) {
     const customStats = getCustomStats();
     customStats[id] = value;
     localStorage.setItem('customStats', JSON.stringify(customStats));
+    pushDataToFirebase();
 }
 
 function getSiteKeywords() { return JSON.parse(localStorage.getItem('siteKeywords') || '{}'); }
@@ -24,92 +25,134 @@ function saveSiteKeyword(domain, value) {
     const kws = getSiteKeywords();
     kws[domain] = parseInt(value) || 0;
     localStorage.setItem('siteKeywords', JSON.stringify(kws));
-    renderTableFooter(); 
+    renderTableFooter();
+    pushDataToFirebase();
 }
 
 // Local Fallback Storage to prevent F5 data loss
 function saveLocalBackup(data) {
     try {
         localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: data }));
-    } catch(e) { console.error("Lỗi lưu máy cục bộ:", e); }
+    } catch (e) { console.error("Lỗi lưu máy cục bộ:", e); }
 }
 
 function loadLocalBackup() {
     try {
         const local = JSON.parse(localStorage.getItem('local_fallback_gsc'));
-        if(local && local.gsc) {
+        if (local && local.gsc) {
             globalGSCData = local.gsc;
             isGscConnected = true;
             renderDashboard(currentPeriod);
-            
+
             const t = new Date(local.timestamp);
-            const timeStr = ('0'+t.getHours()).slice(-2) + ':' + ('0'+t.getMinutes()).slice(-2) + ' ' + ('0'+t.getDate()).slice(-2) + '/' + ('0'+(t.getMonth()+1)).slice(-2);
-            
-            let badge = document.getElementById('cloudSyncBadge');
-            if(!badge) {
-                badge = document.createElement('div');
-                badge.id = 'cloudSyncBadge';
-                badge.style.cssText = 'margin-left: 12px; margin-right: 12px; font-size: 11px; color: #10B981; font-weight: 500; background: rgba(16, 185, 129, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);';
-                
-                const actions = document.querySelector('.header-actions');
-                if(actions) actions.insertBefore(badge, actions.firstChild);
-            }
-            badge.innerHTML = `<i data-lucide="hard-drive" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:4px;"></i> Dữ liệu Offline: ${timeStr}`;
-            lucide.createIcons();
-            
+            const timeStr = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ' ' + ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2);
+
+            updateCloudBadge(timeStr, false);
+
             return true;
         }
-    } catch(e) {}
+    } catch (e) { }
     return false;
 }
 
-// Data Export/Import for Cross-device Sync
-function triggerExportJSON() {
-    if(!globalGSCData) return alert("Không có dữ liệu GSC nào để lưu!");
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(globalGSCData));
-    const dt = new Date(); const dStr = dt.getFullYear() + ('0'+(dt.getMonth()+1)).slice(-2) + ('0'+dt.getDate()).slice(-2);
-    const dlAnchorElem = document.createElement('a');
-    dlAnchorElem.setAttribute("href", dataStr);
-    dlAnchorElem.setAttribute("download", `gsc_backup_${dStr}.json`);
-    dlAnchorElem.click();
+// --- FIREBASE DATABASE CONFIGURATION ---
+// BƯỚC 1: Thay thế thông tin Cấu hình Firebase vào đây
+const firebaseConfig = {
+    apiKey: "AIzaSyBHK8Ga2-DlZ7JgGKW5B0yR3HiuQUMa7rY",
+    authDomain: "potent-catwalk-463811-r3.firebaseapp.com",
+    databaseURL: "https://potent-catwalk-463811-r3-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "potent-catwalk-463811-r3",
+    storageBucket: "potent-catwalk-463811-r3.firebasestorage.app",
+    messagingSenderId: "910348783245",
+    appId: "1:910348783245:web:1e3377c35c4070093adcc4",
+    measurementId: "G-WKRMZEPP1F"
+};
+// BƯỚC 2: Khởi tạo kết nối Đám mây
+let fbDB = null;
+let isRealtimeEnabled = false;
+
+function initFirebaseDatabase() {
+    if (firebaseConfig.apiKey === "YET_TO_FILL") return;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        fbDB = firebase.database();
+        isRealtimeEnabled = true;
+
+        // BƯỚC 3: Lắng nghe sự thay đổi Database theo thời gian thực (Real-time listener)
+        fbDB.ref('dashboard_data').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                if (data.gscData) {
+                    globalGSCData = data.gscData;
+                    isGscConnected = true;
+                    // Sao lưu nội bộ để chống F5 nếu rớt mạng
+                    localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: data.gscData }));
+                }
+                if (data.customStats) localStorage.setItem('customStats', JSON.stringify(data.customStats));
+                if (data.siteKeywords) localStorage.setItem('siteKeywords', JSON.stringify(data.siteKeywords));
+
+                const t = new Date(data.lastUpdated);
+                const timeStr = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ' ' + ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2);
+                updateCloudBadge(timeStr, true);
+
+                renderDashboard(currentPeriod);
+            } else {
+                // Cloud rỗng! Nếu máy này đang giữ dữ liệu GSC xịn thì Đẩy lên cứu viện!
+                if (globalGSCData && isGscConnected) {
+                    pushDataToFirebase();
+                }
+            }
+        });
+    } catch (err) { console.error("Lỗi Khởi tạo Firebase:", err); }
 }
 
-function triggerImportJSON() {
-    document.getElementById('importFile').click();
-}
-
-function handleFileImport(event) {
-    const file = event.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const json = JSON.parse(e.target.result);
-            globalGSCData = json;
-            isGscConnected = true;
-            saveLocalBackup(json);
-            renderDashboard(currentPeriod);
-            alert("Đã cập nhật dữ liệu từ File Backup thành công!");
-        } catch(err) { alert("File không hợp lệ!"); }
+// BƯỚC 4: Hàm đẩy/đồng bộ dữ liệu LÊN Cloud
+function pushDataToFirebase() {
+    if (!isRealtimeEnabled || !fbDB) return;
+    const payload = {
+        gscData: globalGSCData || {},
+        customStats: getCustomStats(),
+        siteKeywords: getSiteKeywords(),
+        lastUpdated: Date.now()
     };
-    reader.readAsText(file);
+    fbDB.ref('dashboard_data').set(payload).catch(e => console.error("Lỗi Push DB:", e));
+}
+
+// Cập nhật trạng thái Cloud/Offline trên Giao diện
+function updateCloudBadge(timeStr, isLiveDatabase) {
+    let badge = document.getElementById('cloudSyncBadge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'cloudSyncBadge';
+        const actions = document.querySelector('.header-actions');
+        if (actions) actions.insertBefore(badge, actions.firstChild);
+    }
+
+    if (isLiveDatabase) {
+        badge.style.cssText = 'margin-left: 12px; margin-right: 12px; font-size: 11px; color: #3B82F6; font-weight: 600; background: rgba(59, 130, 246, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.3); box-shadow: 0 0 10px rgba(59,130,246,0.2); animation: pulse 2s infinite;';
+        badge.innerHTML = `<i data-lucide="database" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:4px;"></i> Live Data: ${timeStr}`;
+    } else {
+        badge.style.cssText = 'margin-left: 12px; margin-right: 12px; font-size: 11px; color: #10B981; font-weight: 500; background: rgba(16, 185, 129, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);';
+        badge.innerHTML = `<i data-lucide="hard-drive" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:4px;"></i> Offline Save: ${timeStr}`;
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // Formatters
 function formatShort(num) {
-    if(num >= 1000000) return (num/1000000).toFixed(1) + 'M';
-    if(num >= 1000) return (num/1000).toFixed(1) + 'K';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toLocaleString('en-US');
 }
 
 function calcChangeObj(current, previous) {
-    if(previous === 0) return { str: current > 0 ? '+100%' : '0%', class: current > 0 ? 'pct-positive' : 'pct-neutral', isPositive: current > 0 };
+    if (previous === 0) return { str: current > 0 ? '+100%' : '0%', class: current > 0 ? 'pct-positive' : 'pct-neutral', isPositive: current > 0 };
     const pct = ((current - previous) / previous) * 100;
     const sign = pct > 0 ? '+' : '';
     let classStr = 'pct-neutral';
-    if(pct > 0) classStr = 'pct-positive';
-    else if(pct < 0) classStr = 'pct-negative';
-    
+    if (pct > 0) classStr = 'pct-positive';
+    else if (pct < 0) classStr = 'pct-negative';
+
     return { str: `${sign}${pct.toFixed(1)}%`, class: classStr, isPositive: pct >= 0 };
 }
 
@@ -131,13 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('closeModalBtn').addEventListener('click', closeModal);
     document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
     document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
-    
-    // Inject Import Input hidden
-    const inputImport = document.createElement('input');
-    inputImport.type = 'file'; inputImport.id = 'importFile'; inputImport.style.display = 'none';
-    inputImport.accept = '.json';
-    inputImport.addEventListener('change', handleFileImport);
-    document.body.appendChild(inputImport);
 
     initGoogleAuth();
 });
@@ -147,7 +183,7 @@ function initMockData() {
 }
 
 function renderDashboard(period) {
-    if(isGscConnected && globalGSCData) {
+    if (isGscConnected && globalGSCData) {
         processAndRenderRealData(period);
     }
 }
@@ -155,7 +191,7 @@ function renderDashboard(period) {
 // Process Real GSC Data dynamically
 function processAndRenderRealData(period) {
     const dates = [];
-    for(let i = 0; i < 60; i++) {
+    for (let i = 0; i < 60; i++) {
         let d = new Date(); d.setDate(d.getDate() - i);
         dates.unshift(d.toISOString().split('T')[0]);
     }
@@ -181,14 +217,14 @@ function processAndRenderRealData(period) {
 
     Object.keys(globalGSCData).forEach(siteUrl => {
         const siteData = globalGSCData[siteUrl];
-        
+
         let wkCurC = 0, wkPrevC = 0, wkCurI = 0;
         let moCurC = 0, moPrevC = 0;
-        
-        weekCurDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; wkCurC += i.clicks; wkCurI += i.impressions; });
-        weekPrevDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; wkPrevC += i.clicks; });
-        monthCurDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; moCurC += i.clicks; });
-        monthPrevDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; moPrevC += i.clicks; });
+
+        weekCurDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; wkCurC += i.clicks; wkCurI += i.impressions; });
+        weekPrevDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; wkPrevC += i.clicks; });
+        monthCurDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; moCurC += i.clicks; });
+        monthPrevDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; moPrevC += i.clicks; });
 
         let curClick = 0, prevClick = 0, curImp = 0, prevImp = 0;
         activeCurDates.forEach((dt, idx) => {
@@ -212,7 +248,7 @@ function processAndRenderRealData(period) {
         totalActivePrevImp += prevImp;
 
         const cleanDomain = siteUrl.replace('sc-domain:', '').replace('https://', '').replace('/', '');
-        
+
         siteBreakdown.push({
             domain: cleanDomain,
             wkCurC, wkPrevC, wkCurI,
@@ -233,7 +269,7 @@ function processAndRenderRealData(period) {
         { id: 'impression_real', title: 'Lượt hiển thị', value: formatShort(totalActiveCurImp), change: impChange.str, trend: trendStr, isPositive: impChange.isPositive, icon: 'eye' }
     ];
 
-    const chartLabels = activeCurDates.map(dt => dt.substring(5).replace('-','/'));
+    const chartLabels = activeCurDates.map(dt => dt.substring(5).replace('-', '/'));
     const chartData = {
         mainChart: { labels: chartLabels, current: chartCurrentClicks, previous: chartPrevClicks },
         impressionChart: { labels: chartLabels, data: chartCurrentImp }
@@ -241,17 +277,17 @@ function processAndRenderRealData(period) {
 
     renderCards(stats);
     renderCharts(chartData);
-    
-    siteBreakdown.sort((a,b) => b.moCurC - a.moCurC);
+
+    siteBreakdown.sort((a, b) => b.moCurC - a.moCurC);
     renderDataTable(siteBreakdown);
     lucide.createIcons();
 }
 
-window.updateKwInput = function(domain, element) { saveSiteKeyword(domain, element.value); };
+window.updateKwInput = function (domain, element) { saveSiteKeyword(domain, element.value); };
 
 function renderDataTable(sites) {
     const tbody = document.getElementById('siteTableBody');
-    if(!tbody) return;
+    if (!tbody) return;
     tbody.innerHTML = '';
     const kws = getSiteKeywords();
 
@@ -287,11 +323,11 @@ function renderDataTable(sites) {
 
 function renderTableFooter() {
     const tfoot = document.getElementById('siteTableFoot');
-    if(!tfoot || globalSiteBreakdown.length === 0) return;
-    
+    if (!tfoot || globalSiteBreakdown.length === 0) return;
+
     let totalKw = 0, twkCurC = 0, twkCurI = 0, twkPrevC = 0, tmoCurC = 0, tmoPrevC = 0;
     const kws = getSiteKeywords();
-    
+
     globalSiteBreakdown.forEach(s => {
         totalKw += kws[s.domain] || 0;
         twkCurC += s.wkCurC; twkCurI += s.wkCurI; twkPrevC += s.wkPrevC;
@@ -316,21 +352,21 @@ function renderTableFooter() {
     `;
     tfoot.style.display = 'table-footer-group';
 
-    if(totalKw > 0) saveCustomStat('keyword', totalKw.toLocaleString('en-US'));
+    if (totalKw > 0) saveCustomStat('keyword', totalKw.toLocaleString('en-US'));
 }
 
 function renderCards(stats) {
     const grid = document.getElementById('statsGrid');
-    grid.innerHTML = ''; 
+    grid.innerHTML = '';
     const customStats = getCustomStats();
 
     stats.forEach(stat => {
         const changeClass = stat.isPositive ? 'positive' : 'negative';
         const changeIcon = stat.isPositive ? 'trending-up' : 'trending-down';
-        
+
         const displayValue = customStats[stat.id] !== undefined ? customStats[stat.id] : stat.value;
         const canEdit = (stat.id === 'website' || stat.id === 'keyword');
-        const editBtnHTML = canEdit 
+        const editBtnHTML = canEdit
             ? `<button class="edit-btn" onclick="openModal('${stat.id}', '${stat.title}', '${displayValue}')"><i data-lucide="edit-2" style="width: 14px; height: 14px;"></i></button>`
             : '';
 
@@ -358,12 +394,12 @@ function renderCards(stats) {
 }
 
 function renderCharts(data) {
-    if(mainChartInstance) mainChartInstance.destroy();
-    if(impressionChartInstance) impressionChartInstance.destroy();
+    if (mainChartInstance) mainChartInstance.destroy();
+    if (impressionChartInstance) impressionChartInstance.destroy();
 
     const mainCtx = document.getElementById('mainChart').getContext('2d');
     const primaryGradient = mainCtx.createLinearGradient(0, 0, 0, 400);
-    primaryGradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)'); 
+    primaryGradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)');
     primaryGradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
 
     mainChartInstance = new Chart(mainCtx, {
@@ -378,21 +414,21 @@ function renderCharts(data) {
         options: {
             responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             plugins: { legend: { position: 'top', labels: { boxWidth: 12, usePointStyle: true } }, tooltip: { backgroundColor: '#1C2433', titleColor: '#F3F4F6', bodyColor: '#D1D5DB', borderColor: '#2D3748', borderWidth: 1, padding: 12 } },
-            scales: { x: { grid: { color: '#2D3748', drawBorder: false } }, y: { type: 'linear', display: true, position: 'left', grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(v) { return v >= 1000 ? (v/1000).toFixed(1) + 'k' : v; } } } }
+            scales: { x: { grid: { color: '#2D3748', drawBorder: false } }, y: { type: 'linear', display: true, position: 'left', grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v; } } } }
         }
     });
 
     const impCtx = document.getElementById('impressionChart').getContext('2d');
     const barGradient = impCtx.createLinearGradient(0, 0, 0, 400);
-    barGradient.addColorStop(0, '#8B5CF6'); 
-    barGradient.addColorStop(1, '#6366F1'); 
+    barGradient.addColorStop(0, '#8B5CF6');
+    barGradient.addColorStop(1, '#6366F1');
 
     impressionChartInstance = new Chart(impCtx, {
         type: 'bar',
         data: { labels: data.impressionChart.labels, datasets: [{ label: 'Lượt hiển thị', data: data.impressionChart.data, backgroundColor: barGradient, borderRadius: 6, borderSkipped: false }] },
         options: {
             responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1C2433', titleColor: '#F3F4F6', bodyColor: '#D1D5DB', borderColor: '#2D3748', borderWidth: 1, padding: 12 } },
-            scales: { x: { grid: { display: false } }, y: { grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(v) { return v >= 1000 ? (v/1000).toFixed(1) + 'k' : v; } } } }
+            scales: { x: { grid: { display: false } }, y: { grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v; } } } }
         }
     });
 }
@@ -411,7 +447,7 @@ function saveManualData() {
     const id = document.getElementById('editCardId').value;
     let value = document.getElementById('editValueInput').value.trim();
     if (!isNaN(value) && value !== '') value = Number(value).toLocaleString('en-US');
-    if(value !== '') { saveCustomStat(id, value); renderDashboard(currentPeriod); closeModal(); }
+    if (value !== '') { saveCustomStat(id, value); renderDashboard(currentPeriod); closeModal(); }
 }
 
 const CLIENT_ID = '910348783245-iu1mru28v684ds523abgnqe7bshs5ppd.apps.googleusercontent.com';
@@ -448,40 +484,24 @@ function initGoogleAuth() {
     });
 
     const loginBtn = document.getElementById('gscLoginBtn');
-    if(loginBtn) loginBtn.addEventListener('click', () => { tokenClient.requestAccessToken({ prompt: 'consent' }); });
+    if (loginBtn) loginBtn.addEventListener('click', () => { tokenClient.requestAccessToken({ prompt: 'consent' }); });
 
-    // Tạo các Nút bấm Chia sẻ File
-    let actionsDir = document.querySelector('.header-actions');
-    if(actionsDir && !document.getElementById('exportBtn')) {
-        const exportBtn = document.createElement('button');
-        exportBtn.className = 'btn btn-secondary'; exportBtn.id = 'exportBtn';
-        exportBtn.innerHTML = '<i data-lucide="download"></i> Xuất File';
-        exportBtn.onclick = triggerExportJSON;
-        
-        const importBtn = document.createElement('button');
-        importBtn.className = 'btn btn-secondary'; importBtn.id = 'importBtn';
-        importBtn.innerHTML = '<i data-lucide="upload"></i> Đọc File';
-        importBtn.onclick = triggerImportJSON;
-
-        // Chèn vào đầu
-        actionsDir.insertBefore(exportBtn, actionsDir.firstChild);
-        actionsDir.insertBefore(importBtn, actionsDir.firstChild);
-        lucide.createIcons();
-    }
+    // Khởi động Realtime Database thay cho Export/Import
+    initFirebaseDatabase();
 }
 
 async function fetchGSCData(accessToken, isSilent = false) {
     try {
         setLoginState(true);
         const siteRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites', { headers: { Authorization: 'Bearer ' + accessToken } });
-        
-        if(siteRes.status === 401) {
+
+        if (siteRes.status === 401) {
             localStorage.removeItem('gsc_token');
             const btn = document.getElementById('gscLoginBtn');
             btn.innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Nạp lại Bản quyền';
             btn.classList.replace('btn-primary', 'btn-secondary'); btn.disabled = false;
             lucide.createIcons();
-            if(!isSilent) alert('Phiên bản quyền GSC đã hết hạn. Vui lòng bấm Nạp lại bản quyền!');
+            if (!isSilent) alert('Phiên bản quyền GSC đã hết hạn. Vui lòng bấm Nạp lại bản quyền!');
             return;
         }
 
@@ -492,16 +512,16 @@ async function fetchGSCData(accessToken, isSilent = false) {
             'healthpark.com.vn', 'banmat.vn', 'gamingpcguru.com', 'quanche.vn',
             'lynkcohanoi5s.com', 'lynkcotoanquoc.com', 'zeekrvietnams.vn', 'nuocmamvn.vn'
         ];
-        
+
         const matchedSites = siteData.siteEntry ? siteData.siteEntry.filter(e => targetDomains.some(d => e.siteUrl.includes(d))) : [];
 
-        if(matchedSites.length === 0) {
+        if (matchedSites.length === 0) {
             setLoginState(false);
-            if(!isSilent) alert('Không tìm thấy domain nào khớp!');
+            if (!isSilent) alert('Không tìm thấy domain nào khớp!');
             return;
         }
 
-        const endDt = new Date(); const startDt = new Date(endDt); startDt.setDate(startDt.getDate() - 59); 
+        const endDt = new Date(); const startDt = new Date(endDt); startDt.setDate(startDt.getDate() - 59);
         const formatDate = (date) => date.toISOString().split('T')[0];
         const bodyStyle = { startDate: formatDate(startDt), endDate: formatDate(endDt), dimensions: ['date'] };
 
@@ -514,27 +534,31 @@ async function fetchGSCData(accessToken, isSilent = false) {
                     method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(bodyStyle)
                 });
                 const statsData = await statsRes.json();
-                if(statsData.rows) { 
-                    statsData.rows.forEach(r => { 
+                if (statsData.rows) {
+                    statsData.rows.forEach(r => {
                         siteAggregated[siteObj.siteUrl][r.keys[0]] = { clicks: r.clicks, impressions: r.impressions };
-                    }); 
+                    });
                 }
-            } catch(e) { console.error('Lỗi khi tải:', siteObj.siteUrl); }
+            } catch (e) { console.error('Lỗi khi tải:', siteObj.siteUrl); }
         }));
-        
+
         globalGSCData = siteAggregated;
         isGscConnected = true;
-        
+
         // Lưu VĨNH VIỄN LÊN TRÌNH DUYỆT ĐỂ FIX LỖI F5 !
         saveLocalBackup(siteAggregated);
-        
+
+        // Đồng bộ lên DATABASE ngay lập tức
+        pushDataToFirebase();
+
         setLoginState(false);
         renderDashboard(currentPeriod);
-        loadLocalBackup(); // Cập nhật lại UI huy hiệu
-        
-        if(!isSilent) alert(`Hoàn tất nạp số liệu! Dữ liệu đã được nén vĩnh viễn vào thiết bị này chống F5.`);
-    } catch (err) { 
+        loadLocalBackup(); // Cập nhật lại UI huy hiệu (Màu xanh lá)
+        // Lưu ý: Nếu có Firebase, nó sẽ tự đè lại thành viền xanh dương (Live)
+
+        if (!isSilent) alert(`Hoàn tất nạp số liệu! Dữ liệu đã được nén vĩnh viễn vào thiết bị này chống F5.`);
+    } catch (err) {
         console.error(err); setLoginState(false);
-        if(!isSilent) alert('Lỗi tải dữ liệu. Vui lòng F5 thử lại.'); 
+        if (!isSilent) alert('Lỗi tải dữ liệu. Vui lòng F5 thử lại.');
     }
 }
