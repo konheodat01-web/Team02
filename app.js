@@ -251,13 +251,18 @@ function initGoogleAuth() {
         scope: 'https://www.googleapis.com/auth/webmasters.readonly',
         callback: (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
-                fetchGSCData(tokenResponse.access_token);
+                // Lưu token vào bộ nhớ trình duyệt, có hạn sử dụng 1 tiếng theo luật Google
+                localStorage.setItem('gsc_token', tokenResponse.access_token);
+                localStorage.setItem('gsc_token_expiry', Date.now() + (3500 * 1000));
+                
                 document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
                 document.getElementById('gscLoginBtn').classList.replace('btn-secondary', 'btn-primary');
                 lucide.createIcons();
+                fetchGSCData(tokenResponse.access_token, false);
             }
         }
     });
+
     const loginBtn = document.getElementById('gscLoginBtn');
     if(loginBtn) {
         loginBtn.addEventListener('click', () => {
@@ -265,16 +270,36 @@ function initGoogleAuth() {
             tokenClient.requestAccessToken({ prompt: 'consent' });
         });
     }
+
+    // Tự động khôi phục phiên đăng nhập nếu tải lại trang hoặc tắt đi mở lại (trong vòng 1 giờ)
+    const savedToken = localStorage.getItem('gsc_token');
+    const expiry = localStorage.getItem('gsc_token_expiry');
+    if (savedToken && expiry && Date.now() < parseInt(expiry)) {
+        document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
+        document.getElementById('gscLoginBtn').classList.replace('btn-secondary', 'btn-primary');
+        lucide.createIcons();
+        fetchGSCData(savedToken, true);
+    }
 }
 
-async function fetchGSCData(accessToken) {
+async function fetchGSCData(accessToken, isSilent = false) {
     try {
         const siteRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites', { headers: { Authorization: 'Bearer ' + accessToken } });
+        
+        // Nếu token chết/lỗi
+        if(siteRes.status === 401) {
+            localStorage.removeItem('gsc_token');
+            localStorage.removeItem('gsc_token_expiry');
+            document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC';
+            document.getElementById('gscLoginBtn').classList.replace('btn-primary', 'btn-secondary');
+            lucide.createIcons();
+            if(!isSilent) alert('Phiên đăng nhập GSC đã hết hạn. Vui lòng kết nối lại!');
+            return;
+        }
+
         const siteData = await siteRes.json();
         
         if(siteData.siteEntry && siteData.siteEntry.length > 0) {
-            
-            // Danh sách các website anh yêu cầu
             const targetDomains = [
                 'vidcogroup.com', 'kuromi.vn', 'tranhalinh.org', 'duyhoang.vn', 'dulich24h.net',
                 'duansungroups.com', 'dadiland.com', 'thanhhungtrans.com', 'cafelegend.vn',
@@ -282,13 +307,12 @@ async function fetchGSCData(accessToken) {
                 'lynkcohanoi5s.com', 'lynkcotoanquoc.com', 'zeekrvietnams.vn', 'nuocmamvn.vn'
             ];
             
-            // Lọc ra các site có mặt trong tài khoản GSC của anh khớp với danh sách trên
             const matchedSites = siteData.siteEntry.filter(entry => {
                 return targetDomains.some(domain => entry.siteUrl.includes(domain));
             });
 
             if(matchedSites.length === 0) {
-                alert('Tài khoản GSC của anh không chứa bất kỳ website nào trong tệp yêu cầu!');
+                if(!isSilent) alert('Tài khoản GSC của anh không chứa bất kỳ website nào trong tệp yêu cầu!');
                 return;
             }
 
@@ -301,7 +325,6 @@ async function fetchGSCData(accessToken) {
             let totalClicks = 0; 
             let totalImp = 0;
             
-            // Gọi yêu cầu API đồng loạt tới toàn bộ site khớp để tăng tốc độ
             await Promise.all(matchedSites.map(async (siteObj) => {
                 try {
                     const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
@@ -321,7 +344,6 @@ async function fetchGSCData(accessToken) {
                 }
             }));
             
-            // Format gọn gàng
             const clickText = totalClicks > 1000 ? (totalClicks/1000).toFixed(1) + 'K' : totalClicks;
             const impText = totalImp > 1000 ? (totalImp/1000).toFixed(1) + 'K' : totalImp;
             
@@ -329,13 +351,13 @@ async function fetchGSCData(accessToken) {
             saveCustomStat('impression', impText);
             
             renderDashboard(currentPeriod);
-            alert(`Đã tải thành công Clicks/Impressions tổng hợp từ ${matchedSites.length} websites!`);
+            if(!isSilent) alert(`Đã tải thành công Clicks/Impressions tổng hợp từ ${matchedSites.length} websites!`);
         } else { 
-            alert('Tài khoản chưa có dữ liệu Search Console!'); 
+            if(!isSilent) alert('Tài khoản chưa có dữ liệu Search Console!'); 
         }
     } catch (err) { 
         console.error(err); 
-        alert('Lỗi lấy GSC Data! Vui lòng thao tác lại.'); 
+        if(!isSilent) alert('Lỗi lấy GSC Data! Vui lòng thao tác lại.'); 
     }
 }
 
