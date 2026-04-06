@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO Dashboard - Báo Cáo Tổng Hợp</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i data-lucide="command" class="logo-icon"></i>
+                <span>Antigravity Dashboard</span>
+            </div>
+            
+            <nav class="nav-menu">
+                <div class="menu-label">Menu Chính</div>
+                <a href="#" class="nav-item active">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Tổng Quan</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i data-lucide="globe"></i>
+                    <span>Mạng Lưới Web</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i data-lucide="key"></i>
+                    <span>Phân Tích Keyword</span>
+                </a>
+            </nav>
+
+            <div class="user-profile">
+                <img src="https://ui-avatars.com/api/?name=Admin&background=6366f1&color=fff&rounded=true" alt="Admin" class="avatar">
+                <div class="user-info">
+                    <div class="name">Admin Manager</div>
+                    <div class="role">SEO Master</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <div class="header-title">
+                    <h1>Báo Cáo Hiệu Suất Hệ Thống <span class="pulse-indicator"></span></h1>
+                    <p class="subtitle">Thống kê traffic, clicks và hiển thị từ các dự án web</p>
+                </div>
+                <div class="header-actions">
+                    <div class="time-filter">
+                        <button class="filter-btn active" data-period="weekly">Theo Tuần</button>
+                        <button class="filter-btn" data-period="monthly">Theo Tháng</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Stats Grid (Injected by JS) -->
+            <div class="stats-grid" id="statsGrid">
+                <!-- Data cards here... -->
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-section">
+                <div class="chart-card main-chart-wrap">
+                    <div class="card-header">
+                        <h2>Traffic & Clicks</h2>
+                        <button class="icon-btn"><i data-lucide="more-horizontal"></i></button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-card secondary-chart-wrap">
+                    <div class="card-header">
+                        <h2>Hiển thị (Impressions)</h2>
+                        <button class="icon-btn"><i data-lucide="more-horizontal"></i></button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="impressionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
