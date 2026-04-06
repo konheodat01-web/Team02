@@ -27,6 +27,74 @@ function saveSiteKeyword(domain, value) {
     renderTableFooter(); 
 }
 
+// Local Fallback Storage to prevent F5 data loss
+function saveLocalBackup(data) {
+    try {
+        localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: data }));
+    } catch(e) { console.error("Lỗi lưu máy cục bộ:", e); }
+}
+
+function loadLocalBackup() {
+    try {
+        const local = JSON.parse(localStorage.getItem('local_fallback_gsc'));
+        if(local && local.gsc) {
+            globalGSCData = local.gsc;
+            isGscConnected = true;
+            renderDashboard(currentPeriod);
+            
+            const t = new Date(local.timestamp);
+            const timeStr = ('0'+t.getHours()).slice(-2) + ':' + ('0'+t.getMinutes()).slice(-2) + ' ' + ('0'+t.getDate()).slice(-2) + '/' + ('0'+(t.getMonth()+1)).slice(-2);
+            
+            let badge = document.getElementById('cloudSyncBadge');
+            if(!badge) {
+                badge = document.createElement('div');
+                badge.id = 'cloudSyncBadge';
+                badge.style.cssText = 'margin-left: 12px; margin-right: 12px; font-size: 11px; color: #10B981; font-weight: 500; background: rgba(16, 185, 129, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);';
+                
+                const actions = document.querySelector('.header-actions');
+                if(actions) actions.insertBefore(badge, actions.firstChild);
+            }
+            badge.innerHTML = `<i data-lucide="hard-drive" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:4px;"></i> Dữ liệu Offline: ${timeStr}`;
+            lucide.createIcons();
+            
+            return true;
+        }
+    } catch(e) {}
+    return false;
+}
+
+// Data Export/Import for Cross-device Sync
+function triggerExportJSON() {
+    if(!globalGSCData) return alert("Không có dữ liệu GSC nào để lưu!");
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(globalGSCData));
+    const dt = new Date(); const dStr = dt.getFullYear() + ('0'+(dt.getMonth()+1)).slice(-2) + ('0'+dt.getDate()).slice(-2);
+    const dlAnchorElem = document.createElement('a');
+    dlAnchorElem.setAttribute("href", dataStr);
+    dlAnchorElem.setAttribute("download", `gsc_backup_${dStr}.json`);
+    dlAnchorElem.click();
+}
+
+function triggerImportJSON() {
+    document.getElementById('importFile').click();
+}
+
+function handleFileImport(event) {
+    const file = event.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const json = JSON.parse(e.target.result);
+            globalGSCData = json;
+            isGscConnected = true;
+            saveLocalBackup(json);
+            renderDashboard(currentPeriod);
+            alert("Đã cập nhật dữ liệu từ File Backup thành công!");
+        } catch(err) { alert("File không hợp lệ!"); }
+    };
+    reader.readAsText(file);
+}
+
 // Formatters
 function formatShort(num) {
     if(num >= 1000000) return (num/1000000).toFixed(1) + 'M';
@@ -64,6 +132,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
     document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
     
+    // Inject Import Input hidden
+    const inputImport = document.createElement('input');
+    inputImport.type = 'file'; inputImport.id = 'importFile'; inputImport.style.display = 'none';
+    inputImport.accept = '.json';
+    inputImport.addEventListener('change', handleFileImport);
+    document.body.appendChild(inputImport);
+
     initGoogleAuth();
 });
 
@@ -85,7 +160,6 @@ function processAndRenderRealData(period) {
         dates.unshift(d.toISOString().split('T')[0]);
     }
 
-    // Time slices
     const weekCurDates = dates.slice(-7);
     const weekPrevDates = dates.slice(-14, -7);
     const monthCurDates = dates.slice(-30);
@@ -105,22 +179,17 @@ function processAndRenderRealData(period) {
 
     const siteBreakdown = [];
 
-    // Loop through all sites
     Object.keys(globalGSCData).forEach(siteUrl => {
         const siteData = globalGSCData[siteUrl];
         
         let wkCurC = 0, wkPrevC = 0, wkCurI = 0;
         let moCurC = 0, moPrevC = 0;
         
-        // Compute Weekly
         weekCurDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; wkCurC += i.clicks; wkCurI += i.impressions; });
         weekPrevDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; wkPrevC += i.clicks; });
-        
-        // Compute Monthly
         monthCurDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; moCurC += i.clicks; });
         monthPrevDates.forEach(dt => { const i = siteData[dt] || { clicks:0, impressions:0 }; moPrevC += i.clicks; });
 
-        // Chart calculations based on active filter
         let curClick = 0, prevClick = 0, curImp = 0, prevImp = 0;
         activeCurDates.forEach((dt, idx) => {
             const item = siteData[dt] || { clicks: 0, impressions: 0 };
@@ -142,7 +211,6 @@ function processAndRenderRealData(period) {
         totalActivePrevClicks += prevClick;
         totalActivePrevImp += prevImp;
 
-        // Clean domain
         const cleanDomain = siteUrl.replace('sc-domain:', '').replace('https://', '').replace('/', '');
         
         siteBreakdown.push({
@@ -152,9 +220,8 @@ function processAndRenderRealData(period) {
         });
     });
 
-    globalSiteBreakdown = siteBreakdown; // Cache for total rendering
+    globalSiteBreakdown = siteBreakdown;
 
-    // Construct the stats array for top cards
     const trendStr = isWeekly ? 'vs tuần trước' : 'vs tháng trước';
     const clickChange = calcChangeObj(totalActiveCurClicks, totalActivePrevClicks);
     const impChange = calcChangeObj(totalActiveCurImp, totalActivePrevImp);
@@ -175,16 +242,12 @@ function processAndRenderRealData(period) {
     renderCards(stats);
     renderCharts(chartData);
     
-    // Render DataTable
-    siteBreakdown.sort((a,b) => b.moCurC - a.moCurC); // Sort by monthly clicks descending
+    siteBreakdown.sort((a,b) => b.moCurC - a.moCurC);
     renderDataTable(siteBreakdown);
     lucide.createIcons();
 }
 
-// --- Data Table Rendering ---
-window.updateKwInput = function(domain, element) {
-    saveSiteKeyword(domain, element.value);
-};
+window.updateKwInput = function(domain, element) { saveSiteKeyword(domain, element.value); };
 
 function renderDataTable(sites) {
     const tbody = document.getElementById('siteTableBody');
@@ -196,7 +259,6 @@ function renderDataTable(sites) {
         const tr = document.createElement('tr');
         const wkClickTrend = calcChangeObj(site.wkCurC, site.wkPrevC);
         const moClickTrend = calcChangeObj(site.moCurC, site.moPrevC);
-        
         const kwVal = kws[site.domain] || 0;
         const faviconUrl = 'https://www.google.com/s2/favicons?domain=' + site.domain + '&sz=64';
 
@@ -254,7 +316,6 @@ function renderTableFooter() {
     `;
     tfoot.style.display = 'table-footer-group';
 
-    // Auto-update top card "Keyword" if user fills it out
     if(totalKw > 0) saveCustomStat('keyword', totalKw.toLocaleString('en-US'));
 }
 
@@ -296,7 +357,6 @@ function renderCards(stats) {
     });
 }
 
-// ... chart setup is mostly identical
 function renderCharts(data) {
     if(mainChartInstance) mainChartInstance.destroy();
     if(impressionChartInstance) impressionChartInstance.destroy();
@@ -356,62 +416,15 @@ function saveManualData() {
 
 const CLIENT_ID = '910348783245-iu1mru28v684ds523abgnqe7bshs5ppd.apps.googleusercontent.com';
 let tokenClient;
-const JSON_BLOB_URL = 'https://jsonblob.com/api/jsonBlob/019d6221-1176-7df0-a14c-3cb30f3958cf';
-
-async function syncToCloud(data) {
-    try {
-        await fetch(JSON_BLOB_URL, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ timestamp: Date.now(), gsc: data })
-        });
-        console.log("Đã đẩy dữ liệu lên Trạm Trung Chuyển Không Gian!");
-    } catch(e) { console.error("Lỗi đồng bộ Cloud:", e); }
-}
-
-async function loadFromCloud() {
-    try {
-        const res = await fetch(JSON_BLOB_URL, { cache: 'no-store' });
-        const data = await res.json();
-        if(data && data.gsc) {
-            globalGSCData = data.gsc;
-            isGscConnected = true;
-            renderDashboard(currentPeriod);
-            
-            const t = new Date(data.timestamp);
-            const timeStr = ('0'+t.getHours()).slice(-2) + ':' + ('0'+t.getMinutes()).slice(-2) + ' ' + ('0'+t.getDate()).slice(-2) + '/' + ('0'+(t.getMonth()+1)).slice(-2);
-            
-            let badge = document.getElementById('cloudSyncBadge');
-            if(!badge) {
-                badge = document.createElement('div');
-                badge.id = 'cloudSyncBadge';
-                badge.style.cssText = 'margin-left: 12px; margin-right: 12px; font-size: 11px; color: #10B981; font-weight: 500; background: rgba(16, 185, 129, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);';
-                
-                // insert to header actions
-                const actions = document.querySelector('.header-actions');
-                if(actions) actions.insertBefore(badge, actions.firstChild);
-            }
-            badge.innerHTML = `<i data-lucide="cloud-download" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:4px;"></i> Đã nạp Dữ liệu Cloud (${timeStr})`;
-            lucide.createIcons();
-            
-            // set Login State normal
-            const btn = document.getElementById('gscLoginBtn');
-            if(btn) { btn.innerHTML = '<i data-lucide="refresh-ccw" style="width: 16px;"></i> Nạp lại lên Cloud'; btn.classList.replace('btn-secondary', 'btn-primary'); }
-            
-            return true;
-        }
-    } catch(e) { console.error("Cloud Trống:", e); }
-    return false;
-}
 
 function setLoginState(isLoading) {
-    const btn = document.getElementById('gscLoginBtn');
+    let btn = document.getElementById('gscLoginBtn');
     if (!btn) return;
     if (isLoading) {
-        btn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i> Google đang chạy...';
+        btn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i> Đang kết nối Google...';
         btn.classList.add('disabled'); btn.disabled = true;
     } else {
-        btn.innerHTML = '<i data-lucide="refresh-ccw" style="width: 16px;"></i> Nạp lại lên Cloud';
+        btn.innerHTML = '<i data-lucide="refresh-ccw" style="width: 16px;"></i> Cập nhật GSC API';
         btn.classList.remove('disabled'); btn.classList.replace('btn-secondary', 'btn-primary');
         btn.disabled = false; isGscConnected = true;
     }
@@ -419,8 +432,8 @@ function setLoginState(isLoading) {
 }
 
 function initGoogleAuth() {
-    // Luôn ưu tiên kéo từ Cloud nếu có, giúp người dùng khác xem được ngay
-    loadFromCloud();
+    // Ưu tiên load bộ nhớ vĩnh viễn (LocalStorage) đầu tiên khi vừa refresh F5!
+    loadLocalBackup();
 
     if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -436,6 +449,25 @@ function initGoogleAuth() {
 
     const loginBtn = document.getElementById('gscLoginBtn');
     if(loginBtn) loginBtn.addEventListener('click', () => { tokenClient.requestAccessToken({ prompt: 'consent' }); });
+
+    // Tạo các Nút bấm Chia sẻ File
+    let actionsDir = document.querySelector('.header-actions');
+    if(actionsDir && !document.getElementById('exportBtn')) {
+        const exportBtn = document.createElement('button');
+        exportBtn.className = 'btn btn-secondary'; exportBtn.id = 'exportBtn';
+        exportBtn.innerHTML = '<i data-lucide="download"></i> Xuất File';
+        exportBtn.onclick = triggerExportJSON;
+        
+        const importBtn = document.createElement('button');
+        importBtn.className = 'btn btn-secondary'; importBtn.id = 'importBtn';
+        importBtn.innerHTML = '<i data-lucide="upload"></i> Đọc File';
+        importBtn.onclick = triggerImportJSON;
+
+        // Chèn vào đầu
+        actionsDir.insertBefore(exportBtn, actionsDir.firstChild);
+        actionsDir.insertBefore(importBtn, actionsDir.firstChild);
+        lucide.createIcons();
+    }
 }
 
 async function fetchGSCData(accessToken, isSilent = false) {
@@ -446,10 +478,10 @@ async function fetchGSCData(accessToken, isSilent = false) {
         if(siteRes.status === 401) {
             localStorage.removeItem('gsc_token');
             const btn = document.getElementById('gscLoginBtn');
-            btn.innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC';
+            btn.innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Nạp lại Bản quyền';
             btn.classList.replace('btn-primary', 'btn-secondary'); btn.disabled = false;
             lucide.createIcons();
-            if(!isSilent) alert('Quyền truy cập GSC tạm thời hết hạn. Vui lòng bấm Nạp lại bản mới!');
+            if(!isSilent) alert('Phiên bản quyền GSC đã hết hạn. Vui lòng bấm Nạp lại bản quyền!');
             return;
         }
 
@@ -493,14 +525,14 @@ async function fetchGSCData(accessToken, isSilent = false) {
         globalGSCData = siteAggregated;
         isGscConnected = true;
         
-        console.log("Đang tải dữ liệu thực tiễn và đồng bộ máy chủ Cloud...");
-        await syncToCloud(siteAggregated);
+        // Lưu VĨNH VIỄN LÊN TRÌNH DUYỆT ĐỂ FIX LỖI F5 !
+        saveLocalBackup(siteAggregated);
         
         setLoginState(false);
         renderDashboard(currentPeriod);
-        loadFromCloud(); // Gọi lại phát nữa để render cái khung xanh lá cây UI
+        loadLocalBackup(); // Cập nhật lại UI huy hiệu
         
-        if(!isSilent) alert(`Đồng bộ Google GSC xong! Bản cập nhật mới đã được đẩy lên Trạm Cloud cho các nhân viên khác xem.`);
+        if(!isSilent) alert(`Hoàn tất nạp số liệu! Dữ liệu đã được nén vĩnh viễn vào thiết bị này chống F5.`);
     } catch (err) { 
         console.error(err); setLoginState(false);
         if(!isSilent) alert('Lỗi tải dữ liệu. Vui lòng F5 thử lại.'); 
