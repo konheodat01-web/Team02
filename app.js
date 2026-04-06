@@ -82,14 +82,22 @@ function initFirebaseDatabase() {
         fbDB.ref('dashboard_data').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
+                const decodeFBKey = (k) => String(k).replace(/,,/g, '.').replace(/\|\|/g, '/').replace(/@@/g, '#').replace(/\$\$/g, '$').replace(/<</g, '[').replace(/>>/g, ']');
+
                 if (data.gscData) {
-                    globalGSCData = data.gscData;
+                    const orgGsc = {};
+                    for(let k in data.gscData) orgGsc[decodeFBKey(k)] = data.gscData[k];
+                    globalGSCData = orgGsc;
                     isGscConnected = true;
                     // Sao lưu nội bộ để chống F5 nếu rớt mạng
-                    localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: data.gscData }));
+                    localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: orgGsc }));
                 }
                 if (data.customStats) localStorage.setItem('customStats', JSON.stringify(data.customStats));
-                if (data.siteKeywords) localStorage.setItem('siteKeywords', JSON.stringify(data.siteKeywords));
+                if (data.siteKeywords) {
+                    const orgKw = {};
+                    for(let k in data.siteKeywords) orgKw[decodeFBKey(k)] = data.siteKeywords[k];
+                    localStorage.setItem('siteKeywords', JSON.stringify(orgKw));
+                }
 
                 const t = new Date(data.lastUpdated);
                 const timeStr = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ' ' + ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2);
@@ -109,10 +117,20 @@ function initFirebaseDatabase() {
 // BƯỚC 4: Hàm đẩy/đồng bộ dữ liệu LÊN Cloud
 function pushDataToFirebase() {
     if (!isRealtimeEnabled || !fbDB) return;
+    
+    const encodeFBKey = (k) => String(k).replace(/\./g, ',,').replace(/\//g, '||').replace(/#/g, '@@').replace(/\$/g, '$$').replace(/\[/g, '<<').replace(/\]/g, '>>');
+    const safeGscData = {};
+    if (globalGSCData) {
+        for(let k in globalGSCData) safeGscData[encodeFBKey(k)] = globalGSCData[k];
+    }
+    const safeKws = {};
+    const orgKws = getSiteKeywords();
+    for(let k in orgKws) safeKws[encodeFBKey(k)] = orgKws[k];
+
     const payload = {
-        gscData: globalGSCData || {},
+        gscData: safeGscData,
         customStats: getCustomStats(),
-        siteKeywords: getSiteKeywords(),
+        siteKeywords: safeKws,
         lastUpdated: Date.now()
     };
     fbDB.ref('dashboard_data').set(payload).catch(e => console.error("Lỗi Push DB:", e));
