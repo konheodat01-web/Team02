@@ -559,6 +559,6 @@ async function fetchGSCData(accessToken, isSilent = false) {
         if (!isSilent) alert(`Hoàn tất nạp số liệu! Dữ liệu đã được nén vĩnh viễn vào thiết bị này chống F5.`);
     } catch (err) {
         console.error(err); setLoginState(false);
-        if (!isSilent) alert('Lỗi tải dữ liệu. Vui lòng F5 thử lại.');
+        if (!isSilent) alert('Lỗi tải dữ liệu. Vui lòng chụp màn hình này gửi em nhé: \n\n' + err.message + '\n' + err.stack);
     }
 }
