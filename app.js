@@ -239,3 +239,55 @@ function saveManualData() {
         closeModal();
     }
 }
+
+
+// GSC Integration
+const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+let tokenClient;
+
+function initGoogleAuth() {
+    if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+        callback: (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+                fetchGSCData(tokenResponse.access_token);
+                document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Ðã k?t n?i';
+                document.getElementById('gscLoginBtn').classList.replace('btn-secondary', 'btn-primary');
+                lucide.createIcons();
+            }
+        }
+    });
+    const loginBtn = document.getElementById('gscLoginBtn');
+    if(loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            if(CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('B?n c?n di?n CLIENT_ID vào file app.js tru?c!'); return; }
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        });
+    }
+}
+
+async function fetchGSCData(accessToken) {
+    try {
+        const siteRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites', { headers: { Authorization: 'Bearer ' + accessToken } });
+        const siteData = await siteRes.json();
+        if(siteData.siteEntry && siteData.siteEntry.length > 0) {
+            const targetSite = siteData.siteEntry[0].siteUrl;
+            const today = new Date(); const lastWeek = new Date(today); lastWeek.setDate(lastWeek.getDate() - 7);
+            const formatDate = (date) => date.toISOString().split('T')[0];
+            const body = { startDate: formatDate(lastWeek), endDate: formatDate(today), dimensions: ['date'] };
+            const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(targetSite) + '/searchAnalytics/query', {
+                method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+            });
+            const statsData = await statsRes.json();
+            let totalClicks = 0; let totalImp = 0;
+            if(statsData.rows) { statsData.rows.forEach(r => { totalClicks += r.clicks; totalImp += r.impressions; }); }
+            saveCustomStat('click', totalClicks.toLocaleString()); saveCustomStat('impression', totalImp.toLocaleString());
+            renderDashboard(currentPeriod);
+            alert('Ðã t?i thành công Clicks/Impressions t?: ' + targetSite);
+        } else { alert('Tài kho?n chua có site Search Console!'); }
+    } catch (err) { console.error(err); alert('L?i l?y GSC Data!'); }
+}
+
+document.addEventListener('DOMContentLoaded', () => { initGoogleAuth(); });

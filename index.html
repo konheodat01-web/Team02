@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     <div class="dashboard">
@@ -52,7 +53,10 @@
                     <h1>Báo Cáo Hiệu Suất Hệ Thống <span class="pulse-indicator"></span></h1>
                     <p class="subtitle">Thống kê traffic, clicks và hiển thị từ các dự án web</p>
                 </div>
-                <div class="header-actions">
+                <div class="header-actions" style="display: flex; gap: 16px; align-items: center;">
+                    <button id="gscLoginBtn" class="btn btn-secondary flex-row-center" style="display: flex;">
+                        <i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC
+                    </button>
                     <div class="time-filter">
                         <button class="filter-btn active" data-period="weekly">Theo Tuần</button>
                         <button class="filter-btn" data-period="monthly">Theo Tháng</button>
