@@ -2,20 +2,27 @@
 Chart.defaults.color = '#9CA3AF';
 Chart.defaults.font.family = "'Inter', sans-serif";
 
-// Mock Data
+let mainChartInstance = null;
+let impressionChartInstance = null;
+let currentPeriod = 'weekly';
+
+// Global Data Storage for GSC
+let globalGSCData = null; // Stores aggregated 60-day timeline { '2023-01-01': { clicks: 0, impressions: 0 } }
+let isGscConnected = false;
+
+// Mock Data structure (used when not logged in)
 const dataStore = {
     weekly: {
         stats: [
             { id: 'website', title: 'Website đang chạy', value: '42', change: '+2', trend: 'vs tuần trước', isPositive: true, icon: 'globe' },
             { id: 'keyword', title: 'Từ khóa lên Top', value: '1,280', change: '+15%', trend: 'vs tuần trước', isPositive: true, icon: 'key' },
-            { id: 'traffic', title: 'Lượt truy cập (Traffic)', value: '84.5K', change: '+8.2%', trend: 'vs tuần trước', isPositive: true, icon: 'users' },
             { id: 'click', title: 'Lượt Click', value: '12.4K', change: '-2.1%', trend: 'vs tuần trước', isPositive: false, icon: 'mouse-pointer-click' },
             { id: 'impression', title: 'Lượt hiển thị', value: '320.1K', change: '+12.5%', trend: 'vs tuần trước', isPositive: true, icon: 'eye' }
         ],
         mainChart: {
             labels: ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'],
-            traffic: [12000, 15000, 14000, 18000, 11000, 8000, 6500],
-            clicks: [1800, 2400, 2100, 2900, 1500, 900, 800]
+            current: [1800, 2400, 2100, 2900, 1500, 900, 800],
+            previous: [1500, 2000, 1800, 2200, 1300, 1100, 750]
         },
         impressionChart: {
             labels: ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'],
@@ -26,14 +33,13 @@ const dataStore = {
         stats: [
             { id: 'website', title: 'Website đang chạy', value: '45', change: '+5', trend: 'vs tháng trước', isPositive: true, icon: 'globe' },
             { id: 'keyword', title: 'Từ khóa lên Top', value: '1,420', change: '+25%', trend: 'vs tháng trước', isPositive: true, icon: 'key' },
-            { id: 'traffic', title: 'Lượt truy cập (Traffic)', value: '380.2K', change: '+18.4%', trend: 'vs tháng trước', isPositive: true, icon: 'users' },
             { id: 'click', title: 'Lượt Click', value: '55.8K', change: '+10.2%', trend: 'vs tháng trước', isPositive: true, icon: 'mouse-pointer-click' },
             { id: 'impression', title: 'Lượt hiển thị', value: '1.4M', change: '+22.5%', trend: 'vs tháng trước', isPositive: true, icon: 'eye' }
         ],
         mainChart: {
             labels: ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'],
-            traffic: [85000, 92000, 88000, 115200],
-            clicks: [12400, 13800, 11500, 18100]
+            current: [12400, 13800, 11500, 18100],
+            previous: [10000, 11500, 9000, 15000]
         },
         impressionChart: {
             labels: ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'],
@@ -42,11 +48,7 @@ const dataStore = {
     }
 };
 
-let mainChartInstance = null;
-let impressionChartInstance = null;
-let currentPeriod = 'weekly';
-
-// Local Storage handler
+// Local Storage handler for manual fields
 function getCustomStats() {
     return JSON.parse(localStorage.getItem('customStats') || '{}');
 }
@@ -57,44 +59,130 @@ function saveCustomStat(id, value) {
     localStorage.setItem('customStats', JSON.stringify(customStats));
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    // Render Icons
-    lucide.createIcons();
+// Format numbers shorthand (e.g. 1.2K)
+function formatShort(num) {
+    if(num >= 1000000) return (num/1000000).toFixed(1) + 'M';
+    if(num >= 1000) return (num/1000).toFixed(1) + 'K';
+    return num.toLocaleString('en-US');
+}
 
-    // Initial render (Weekly)
+// Calculate percentage change
+function calcChange(current, previous) {
+    if(previous === 0) return current > 0 ? '+100%' : '0%';
+    const pct = ((current - previous) / previous) * 100;
+    const sign = pct > 0 ? '+' : '';
+    return `${sign}${pct.toFixed(1)}%`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
     renderDashboard('weekly');
 
-    // Filter Buttons Event
     const filterBtns = document.querySelectorAll('.filter-btn');
     filterBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            // Update active state
             filterBtns.forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
-
-            // Render new data
             currentPeriod = e.target.dataset.period;
             renderDashboard(currentPeriod);
         });
     });
 
-    // Modal Events
     document.getElementById('closeModalBtn').addEventListener('click', closeModal);
     document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
     document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
 });
 
 function renderDashboard(period) {
-    const data = dataStore[period];
-    renderCards(data.stats);
-    renderCharts(data);
+    if(isGscConnected && globalGSCData) {
+        processAndRenderRealData(period);
+    } else {
+        // Render Mock Data
+        const data = dataStore[period];
+        renderCards(data.stats);
+        renderCharts(data);
+        lucide.createIcons();
+    }
+}
+
+// Process Real GSC Data dynamically
+function processAndRenderRealData(period) {
+    // Generate dates sequentially from today backwards
+    const dates = [];
+    for(let i = 0; i < 60; i++) {
+        let d = new Date();
+        d.setDate(d.getDate() - i);
+        dates.unshift(d.toISOString().split('T')[0]); // Ascending order
+    }
+
+    // Prepare variables based on period
+    const isWeekly = (period === 'weekly');
+    const rangeSize = isWeekly ? 7 : 30;
+    
+    // Arrays for charting
+    const currentDates = dates.slice(-rangeSize);
+    const previousDates = dates.slice(-(rangeSize * 2), -rangeSize);
+
+    let currentClicksObj = [];
+    let previousClicksObj = [];
+    let currentImpsObj = [];
+
+    // Tally up
+    let totalCurClicks = 0, totalPrevClicks = 0;
+    let totalCurImp = 0, totalPrevImp = 0;
+
+    // Current Range calculation
+    currentDates.forEach(dt => {
+        const item = globalGSCData[dt] || { clicks: 0, impressions: 0 };
+        currentClicksObj.push(item.clicks);
+        currentImpsObj.push(item.impressions);
+        totalCurClicks += item.clicks;
+        totalCurImp += item.impressions;
+    });
+
+    // Previous Range calculation
+    previousDates.forEach(dt => {
+        const item = globalGSCData[dt] || { clicks: 0, impressions: 0 };
+        previousClicksObj.push(item.clicks);
+        totalPrevClicks += item.clicks;
+        totalPrevImp += item.impressions;
+    });
+
+    // Generate Chart Labels (e.g., remove year for brevity)
+    const chartLabels = currentDates.map(dt => dt.substring(5).replace('-','/'));
+
+    // Construct the stats array
+    const trendStr = isWeekly ? 'vs tuần trước' : 'vs tháng trước';
+    const clickChange = calcChange(totalCurClicks, totalPrevClicks);
+    const impChange = calcChange(totalCurImp, totalPrevImp);
+
+    const stats = [
+        { id: 'website', title: 'Website đang chạy', value: '42', change: '+2', trend: trendStr, isPositive: true, icon: 'globe' },
+        { id: 'keyword', title: 'Từ khóa lên Top', value: '1,280', change: '+15%', trend: trendStr, isPositive: true, icon: 'key' },
+        { id: 'click_real', title: 'Lượt Click', value: formatShort(totalCurClicks), change: clickChange, trend: trendStr, isPositive: totalCurClicks >= totalPrevClicks, icon: 'mouse-pointer-click' },
+        { id: 'impression_real', title: 'Lượt hiển thị', value: formatShort(totalCurImp), change: impChange, trend: trendStr, isPositive: totalCurImp >= totalPrevImp, icon: 'eye' }
+    ];
+
+    const chartData = {
+        mainChart: {
+            labels: chartLabels,
+            current: currentClicksObj,
+            previous: previousClicksObj
+        },
+        impressionChart: {
+            labels: chartLabels,
+            data: currentImpsObj
+        }
+    };
+
+    renderCards(stats);
+    renderCharts(chartData);
     lucide.createIcons();
 }
 
 function renderCards(stats) {
     const grid = document.getElementById('statsGrid');
-    grid.innerHTML = ''; // Clear previous
+    grid.innerHTML = ''; 
     const customStats = getCustomStats();
 
     stats.forEach(stat => {
@@ -137,9 +225,9 @@ function renderCharts(data) {
     if(impressionChartInstance) impressionChartInstance.destroy();
 
     const mainCtx = document.getElementById('mainChart').getContext('2d');
-    const trafficGradient = mainCtx.createLinearGradient(0, 0, 0, 400);
-    trafficGradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)'); // primary
-    trafficGradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+    const primaryGradient = mainCtx.createLinearGradient(0, 0, 0, 400);
+    primaryGradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)'); // Indigo
+    primaryGradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
 
     mainChartInstance = new Chart(mainCtx, {
         type: 'line',
@@ -147,25 +235,25 @@ function renderCharts(data) {
             labels: data.mainChart.labels,
             datasets: [
                 {
-                    label: 'Traffic',
-                    data: data.mainChart.traffic,
+                    label: 'Clicks Kỳ Này',
+                    data: data.mainChart.current,
                     borderColor: '#6366F1',
-                    backgroundColor: trafficGradient,
+                    backgroundColor: primaryGradient,
                     borderWidth: 2,
                     tension: 0.4,
                     fill: true,
                     yAxisID: 'y'
                 },
                 {
-                    label: 'Clicks',
-                    data: data.mainChart.clicks,
-                    borderColor: '#10B981', // success
+                    label: 'Clicks Kỳ Trước',
+                    data: data.mainChart.previous,
+                    borderColor: '#6B7280', // Gray dashed
                     backgroundColor: 'transparent',
                     borderWidth: 2,
                     borderDash: [5, 5],
                     tension: 0.4,
-                    pointBackgroundColor: '#10B981',
-                    yAxisID: 'y1'
+                    pointRadius: 0,
+                    yAxisID: 'y'
                 }
             ]
         },
@@ -179,8 +267,7 @@ function renderCharts(data) {
             },
             scales: {
                 x: { grid: { color: '#2D3748', drawBorder: false } },
-                y: { type: 'linear', display: true, position: 'left', grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } } },
-                y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } } }
+                y: { type: 'linear', display: true, position: 'left', grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(value) { return value >= 1000 ? (value/1000).toFixed(1) + 'k' : value; } } }
             }
         }
     });
@@ -194,7 +281,7 @@ function renderCharts(data) {
         type: 'bar',
         data: {
             labels: data.impressionChart.labels,
-            datasets: [{ label: 'Impressions', data: data.impressionChart.data, backgroundColor: barGradient, borderRadius: 6, borderSkipped: false }]
+            datasets: [{ label: 'Lượt hiển thị (Kỳ Này)', data: data.impressionChart.data, backgroundColor: barGradient, borderRadius: 6, borderSkipped: false }]
         },
         options: {
             responsive: true,
@@ -205,17 +292,16 @@ function renderCharts(data) {
             },
             scales: {
                 x: { grid: { display: false } },
-                y: { grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(value) { return value >= 1000 ? value/1000 + 'k' : value; } } }
+                y: { grid: { color: '#2D3748', drawBorder: false }, ticks: { callback: function(value) { return value >= 1000 ? (value/1000).toFixed(1) + 'k' : value; } } }
             }
         }
     });
 }
 
-// Modal Handlers
 function openModal(id, title, currentValue) {
     document.getElementById('editCardId').value = id;
     document.getElementById('editCardName').innerText = title;
-    document.getElementById('editValueInput').value = currentValue.replace(/,/g, '');
+    document.getElementById('editValueInput').value = String(currentValue).replace(/,/g, '');
     document.getElementById('editModal').classList.add('active');
     document.getElementById('editValueInput').focus();
 }
@@ -227,12 +313,9 @@ function closeModal() {
 function saveManualData() {
     const id = document.getElementById('editCardId').value;
     let value = document.getElementById('editValueInput').value.trim();
-    
-    // Add commas back if it's a raw number roughly
     if (!isNaN(value) && value !== '') {
         value = Number(value).toLocaleString('en-US');
     }
-    
     if(value !== '') {
         saveCustomStat(id, value);
         renderDashboard(currentPeriod);
@@ -240,24 +323,37 @@ function saveManualData() {
     }
 }
 
-// GSC Integration
+// --- GSC API LOGIC ---
 const CLIENT_ID = '910348783245-iu1mru28v684ds523abgnqe7bshs5ppd.apps.googleusercontent.com';
 let tokenClient;
+
+function setLoginState(isLoading) {
+    const btn = document.getElementById('gscLoginBtn');
+    if (!btn) return;
+    if (isLoading) {
+        btn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i> Đang tải dữ liệu...';
+        btn.classList.add('disabled');
+        btn.disabled = true;
+    } else {
+        btn.innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
+        btn.classList.remove('disabled');
+        btn.classList.replace('btn-secondary', 'btn-primary');
+        btn.disabled = false;
+        isGscConnected = true;
+    }
+    lucide.createIcons();
+}
 
 function initGoogleAuth() {
     if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+        prompt: '',
         callback: (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
-                // Lưu token vào bộ nhớ trình duyệt, có hạn sử dụng 1 tiếng theo luật Google
                 localStorage.setItem('gsc_token', tokenResponse.access_token);
                 localStorage.setItem('gsc_token_expiry', Date.now() + (3500 * 1000));
-                
-                document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
-                document.getElementById('gscLoginBtn').classList.replace('btn-secondary', 'btn-primary');
-                lucide.createIcons();
                 fetchGSCData(tokenResponse.access_token, false);
             }
         }
@@ -266,98 +362,94 @@ function initGoogleAuth() {
     const loginBtn = document.getElementById('gscLoginBtn');
     if(loginBtn) {
         loginBtn.addEventListener('click', () => {
-            if(CLIENT_ID === 'YOUR_CLIENT_ID_HERE') { alert('Bạn cần điền CLIENT_ID vào file app.js trước!'); return; }
             tokenClient.requestAccessToken({ prompt: 'consent' });
         });
     }
 
-    // Tự động khôi phục phiên đăng nhập nếu tải lại trang hoặc tắt đi mở lại (trong vòng 1 giờ)
     const savedToken = localStorage.getItem('gsc_token');
     const expiry = localStorage.getItem('gsc_token_expiry');
     if (savedToken && expiry && Date.now() < parseInt(expiry)) {
-        document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="check" style="width: 16px;"></i> Đã kết nối';
-        document.getElementById('gscLoginBtn').classList.replace('btn-secondary', 'btn-primary');
-        lucide.createIcons();
         fetchGSCData(savedToken, true);
     }
 }
 
 async function fetchGSCData(accessToken, isSilent = false) {
     try {
+        setLoginState(true);
         const siteRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites', { headers: { Authorization: 'Bearer ' + accessToken } });
         
-        // Nếu token chết/lỗi
         if(siteRes.status === 401) {
             localStorage.removeItem('gsc_token');
-            localStorage.removeItem('gsc_token_expiry');
-            document.getElementById('gscLoginBtn').innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC';
-            document.getElementById('gscLoginBtn').classList.replace('btn-primary', 'btn-secondary');
+            const btn = document.getElementById('gscLoginBtn');
+            btn.innerHTML = '<i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC';
+            btn.classList.replace('btn-primary', 'btn-secondary');
+            btn.disabled = false;
             lucide.createIcons();
             if(!isSilent) alert('Phiên đăng nhập GSC đã hết hạn. Vui lòng kết nối lại!');
             return;
         }
 
         const siteData = await siteRes.json();
+        const targetDomains = [
+            'vidcogroup.com', 'kuromi.vn', 'tranhalinh.org', 'duyhoang.vn', 'dulich24h.net',
+            'duansungroups.com', 'dadiland.com', 'thanhhungtrans.com', 'cafelegend.vn',
+            'healthpark.com.vn', 'banmat.vn', 'gamingpcguru.com', 'quanche.vn',
+            'lynkcohanoi5s.com', 'lynkcotoanquoc.com', 'zeekrvietnams.vn', 'nuocmamvn.vn'
+        ];
         
-        if(siteData.siteEntry && siteData.siteEntry.length > 0) {
-            const targetDomains = [
-                'vidcogroup.com', 'kuromi.vn', 'tranhalinh.org', 'duyhoang.vn', 'dulich24h.net',
-                'duansungroups.com', 'dadiland.com', 'thanhhungtrans.com', 'cafelegend.vn',
-                'healthpark.com.vn', 'banmat.vn', 'gamingpcguru.com', 'quanche.vn',
-                'lynkcohanoi5s.com', 'lynkcotoanquoc.com', 'zeekrvietnams.vn', 'nuocmamvn.vn'
-            ];
-            
-            const matchedSites = siteData.siteEntry.filter(entry => {
-                return targetDomains.some(domain => entry.siteUrl.includes(domain));
-            });
+        const matchedSites = siteData.siteEntry ? siteData.siteEntry.filter(entry => targetDomains.some(domain => entry.siteUrl.includes(domain))) : [];
 
-            if(matchedSites.length === 0) {
-                if(!isSilent) alert('Tài khoản GSC của anh không chứa bất kỳ website nào trong tệp yêu cầu!');
-                return;
-            }
-
-            const today = new Date(); 
-            const lastWeek = new Date(today); 
-            lastWeek.setDate(lastWeek.getDate() - 7);
-            const formatDate = (date) => date.toISOString().split('T')[0];
-            const bodyStyle = { startDate: formatDate(lastWeek), endDate: formatDate(today), dimensions: ['date'] };
-
-            let totalClicks = 0; 
-            let totalImp = 0;
-            
-            await Promise.all(matchedSites.map(async (siteObj) => {
-                try {
-                    const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
-                        method: 'POST', 
-                        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify(bodyStyle)
-                    });
-                    const statsData = await statsRes.json();
-                    if(statsData.rows) { 
-                        statsData.rows.forEach(r => { 
-                            totalClicks += r.clicks; 
-                            totalImp += r.impressions; 
-                        }); 
-                    }
-                } catch(e) {
-                    console.error('Lỗi rớt mạng cho site:', siteObj.siteUrl, e);
-                }
-            }));
-            
-            const clickText = totalClicks > 1000 ? (totalClicks/1000).toFixed(1) + 'K' : totalClicks;
-            const impText = totalImp > 1000 ? (totalImp/1000).toFixed(1) + 'K' : totalImp;
-            
-            saveCustomStat('click', clickText); 
-            saveCustomStat('impression', impText);
-            
-            renderDashboard(currentPeriod);
-            if(!isSilent) alert(`Đã tải thành công Clicks/Impressions tổng hợp từ ${matchedSites.length} websites!`);
-        } else { 
-            if(!isSilent) alert('Tài khoản chưa có dữ liệu Search Console!'); 
+        if(matchedSites.length === 0) {
+            setLoginState(false);
+            if(!isSilent) alert('Không tìm thấy domain nào khớp!');
+            return;
         }
+
+        // Lấy biên độ 60 ngày
+        const endDt = new Date(); 
+        const startDt = new Date(endDt); 
+        startDt.setDate(startDt.getDate() - 59); // 60 days included
+
+        const formatDate = (date) => date.toISOString().split('T')[0];
+        const bodyStyle = { startDate: formatDate(startDt), endDate: formatDate(endDt), dimensions: ['date'] };
+
+        // Khởi tạo globalGSCData rỗng
+        let aggregated = {};
+        for(let i=0; i<60; i++) {
+            let d = new Date(); d.setDate(d.getDate() - i);
+            aggregated[formatDate(d)] = { clicks: 0, impressions: 0 };
+        }
+
+        // Parallel Requests
+        await Promise.all(matchedSites.map(async (siteObj) => {
+            try {
+                const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
+                    method: 'POST', 
+                    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(bodyStyle)
+                });
+                const statsData = await statsRes.json();
+                if(statsData.rows) { 
+                    statsData.rows.forEach(r => { 
+                        const dateStr = r.keys[0]; // "YYYY-MM-DD"
+                        if(aggregated[dateStr]) {
+                            aggregated[dateStr].clicks += r.clicks; 
+                            aggregated[dateStr].impressions += r.impressions; 
+                        }
+                    }); 
+                }
+            } catch(e) { console.error('Lỗi khi tải:', siteObj.siteUrl); }
+        }));
+        
+        globalGSCData = aggregated;
+        setLoginState(false);
+        renderDashboard(currentPeriod);
+        
+        if(!isSilent) alert(`Hoàn tất đồng bộ dữ liệu thời gian thực từ ${matchedSites.length} websites!`);
     } catch (err) { 
         console.error(err); 
-        if(!isSilent) alert('Lỗi lấy GSC Data! Vui lòng thao tác lại.'); 
+        setLoginState(false);
+        if(!isSilent) alert('Lỗi tải dữ liệu. Vui lòng F5 thử lại.'); 
     }
 }
 

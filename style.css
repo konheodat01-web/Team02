@@ -552,3 +552,7 @@ body {
   width: 100%;
 }
 
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
+.btn:disabled { opacity: 0.7; cursor: not-allowed; }
