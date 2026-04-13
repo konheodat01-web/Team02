@@ -485,9 +485,10 @@ function setLoginState(isLoading) {
     lucide.createIcons();
 }
 
+let hasLoadedBackup = false;
 function initGoogleAuth() {
     // Ưu tiên load bộ nhớ vĩnh viễn (LocalStorage) đầu tiên khi vừa refresh F5!
-    loadLocalBackup();
+    if (!hasLoadedBackup) { loadLocalBackup(); hasLoadedBackup = true; }
 
     if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
     tokenClient = google.accounts.oauth2.initTokenClient({
