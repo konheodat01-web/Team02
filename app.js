@@ -280,9 +280,13 @@ function processAndRenderRealData(period) {
     const clickChange = calcChangeObj(totalActiveCurClicks, totalActivePrevClicks);
     const impChange = calcChangeObj(totalActiveCurImp, totalActivePrevImp);
 
+    const kwsObj = getSiteKeywords();
+    let computedKw = 0;
+    siteBreakdown.forEach(s => { computedKw += kwsObj[s.domain] || 0; });
+
     const stats = [
         { id: 'website', title: 'Website đang chạy', value: siteBreakdown.length, change: '+0', trend: trendStr, isPositive: true, icon: 'globe' },
-        { id: 'keyword', title: 'Từ khóa lên Top', value: '...', change: '+0%', trend: trendStr, isPositive: true, icon: 'key' },
+        { id: 'keyword', title: 'Từ khóa lên Top', value: computedKw > 0 ? computedKw.toLocaleString('en-US') : '...', change: '+0%', trend: trendStr, isPositive: true, icon: 'key' },
         { id: 'click_real', title: 'Lượt Click', value: formatShort(totalActiveCurClicks), change: clickChange.str, trend: trendStr, isPositive: clickChange.isPositive, icon: 'mouse-pointer-click' },
         { id: 'impression_real', title: 'Lượt hiển thị', value: formatShort(totalActiveCurImp), change: impChange.str, trend: trendStr, isPositive: impChange.isPositive, icon: 'eye' }
     ];
@@ -369,8 +373,6 @@ function renderTableFooter() {
         </tr>
     `;
     tfoot.style.display = 'table-footer-group';
-
-    if (totalKw > 0) saveCustomStat('keyword', totalKw.toLocaleString('en-US'));
 }
 
 function renderCards(stats) {
