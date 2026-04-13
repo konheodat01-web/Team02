@@ -212,9 +212,23 @@ function renderDashboard(period) {
 
 // Process Real GSC Data dynamically
 function processAndRenderRealData(period) {
+    // Tự động tìm ngày mới nhất có dữ liệu (Do GSC luôn trễ 2-3 ngày)
+    let maxDateStr = "";
+    Object.keys(globalGSCData).forEach(url => {
+        Object.keys(globalGSCData[url]).forEach(dtStr => {
+            if (dtStr > maxDateStr) maxDateStr = dtStr;
+        });
+    });
+
+    let anchorDate = new Date();
+    if (maxDateStr && maxDateStr.length === 10) {
+        anchorDate = new Date(maxDateStr);
+    }
+
     const dates = [];
     for (let i = 0; i < 60; i++) {
-        let d = new Date(); d.setDate(d.getDate() - i);
+        let d = new Date(anchorDate.getTime()); 
+        d.setDate(d.getDate() - i);
         dates.unshift(d.toISOString().split('T')[0]);
     }
 
