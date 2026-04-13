@@ -567,11 +567,14 @@ async function fetchGSCData(accessToken, isSilent = false) {
             } catch (e) { console.error('Lỗi khi tải:', siteObj.siteUrl); }
         }));
 
-        globalGSCData = siteAggregated;
+        if (!globalGSCData) globalGSCData = {};
+        for (let url in siteAggregated) {
+            globalGSCData[url] = siteAggregated[url];
+        }
         isGscConnected = true;
 
         // Lưu VĨNH VIỄN LÊN TRÌNH DUYỆT ĐỂ FIX LỖI F5 !
-        saveLocalBackup(siteAggregated);
+        saveLocalBackup(globalGSCData);
 
         // Đồng bộ lên DATABASE ngay lập tức
         pushDataToFirebase();
