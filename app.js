@@ -8,8 +8,10 @@ let currentPeriod = 'weekly';
 
 // Global Data Storage for GSC
 let globalGSCData = null;
+let globalGSCKeywords = {};
 let isGscConnected = false;
-let globalSiteBreakdown = []; // Cache for Table Totals
+let globalSiteBreakdown = [];
+let currentViewMode = 'clicks';
 
 // Local Storage Handlers
 function getCustomStats() { return JSON.parse(localStorage.getItem('customStats') || '{}'); }
@@ -30,9 +32,9 @@ function saveSiteKeyword(domain, value) {
 }
 
 // Local Fallback Storage to prevent F5 data loss
-function saveLocalBackup(data) {
+function saveLocalBackup(data, kwData) {
     try {
-        localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: data }));
+        localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: data, gscKw: kwData || {} }));
     } catch (e) { console.error("Lỗi lưu máy cục bộ:", e); }
 }
 
@@ -41,6 +43,7 @@ function loadLocalBackup() {
         const local = JSON.parse(localStorage.getItem('local_fallback_gsc'));
         if (local && local.gsc) {
             globalGSCData = local.gsc;
+            globalGSCKeywords = local.gscKw || {};
             isGscConnected = true;
             renderDashboard(currentPeriod);
 
@@ -88,9 +91,13 @@ function initFirebaseDatabase() {
                     const orgGsc = {};
                     for(let k in data.gscData) orgGsc[decodeFBKey(k)] = data.gscData[k];
                     globalGSCData = orgGsc;
+                    const orgKwData = {};
+                    if (data.gscKwData) {
+                        for(let k in data.gscKwData) orgKwData[decodeFBKey(k)] = data.gscKwData[k];
+                    }
+                    globalGSCKeywords = orgKwData;
                     isGscConnected = true;
-                    // Sao lưu nội bộ để chống F5 nếu rớt mạng
-                    localStorage.setItem('local_fallback_gsc', JSON.stringify({ timestamp: Date.now(), gsc: orgGsc }));
+                    saveLocalBackup(orgGsc, orgKwData);
                 }
                 if (data.customStats) localStorage.setItem('customStats', JSON.stringify(data.customStats));
                 if (data.siteKeywords) {
@@ -127,8 +134,14 @@ function pushDataToFirebase() {
     const orgKws = getSiteKeywords();
     for(let k in orgKws) safeKws[encodeFBKey(k)] = orgKws[k];
 
+    const safeGscKwData = {};
+    if (globalGSCKeywords) {
+        for(let k in globalGSCKeywords) safeGscKwData[encodeFBKey(k)] = globalGSCKeywords[k];
+    }
+
     const payload = {
         gscData: safeGscData,
+        gscKwData: safeGscKwData,
         customStats: getCustomStats(),
         siteKeywords: safeKws,
         lastUpdated: Date.now()
@@ -193,8 +206,30 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
     document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
 
+    // View mode tab switcher
+    document.querySelectorAll('.view-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.view-tab').forEach(b => {
+                b.classList.remove('active');
+                b.style.background = 'transparent';
+                b.style.color = '#9CA3AF';
+            });
+            btn.classList.add('active');
+            btn.style.background = 'rgba(99,102,241,0.2)';
+            btn.style.color = '#6366F1';
+            currentViewMode = btn.dataset.view;
+            renderDashboard(currentPeriod);
+        });
+    });
+
     initGoogleAuth();
 });
+
+window.toggleKeywordRow = function(safeId) {
+    const row = document.getElementById('kw-row-' + safeId);
+    if (!row) return;
+    row.style.display = (row.style.display === 'none' || row.style.display === '') ? 'table-row' : 'none';
+};
 
 function initMockData() {
     renderDashboard('weekly');
@@ -326,36 +361,81 @@ function processAndRenderRealData(period) {
 window.updateKwInput = function (domain, element) { saveSiteKeyword(domain, element.value); };
 
 function renderDataTable(sites) {
+    const thead = document.getElementById('siteTableHead');
     const tbody = document.getElementById('siteTableBody');
-    if (!tbody) return;
+    if (!tbody || !thead) return;
+
+    // Dynamic header based on view mode
+    let headHtml = '<tr><th>Website</th>';
+    if (currentViewMode === 'clicks') {
+        headHtml += '<th>Keyword (SEO)</th><th>Clicks (Tu\u1EA7n n\u00E0y)</th><th>Clicks (Tu\u1EA7n tr\u01B0\u1EDBc)</th><th>So s\u00E1nh (%)</th><th>Clicks (Th\u00E1ng n\u00E0y)</th><th>Clicks (Th\u00E1ng tr\u01B0\u1EDBc)</th><th>So s\u00E1nh (%)</th>';
+    } else if (currentViewMode === 'impressions') {
+        headHtml += '<th>Top T\u1EEB Kh\u00F3a</th><th>Imp. (Tu\u1EA7n n\u00E0y)</th><th>Imp. (Tu\u1EA7n tr\u01B0\u1EDBc)</th><th>So s\u00E1nh (%)</th><th>Imp. (Th\u00E1ng n\u00E0y)</th><th>Imp. (Th\u00E1ng tr\u01B0\u1EDBc)</th><th>So s\u00E1nh (%)</th>';
+    } else {
+        headHtml += '<th>CTR (Tu\u1EA7n n\u00E0y)</th><th>CTR (Tu\u1EA7n tr\u01B0\u1EDBc)</th><th>V\u1ECB tr\u00ED (Tu\u1EA7n)</th><th>CTR (Th\u00E1ng n\u00E0y)</th><th>CTR (Th\u00E1ng tr\u01B0\u1EDBc)</th><th>V\u1ECB tr\u00ED (Th\u00E1ng)</th>';
+    }
+    headHtml += '</tr>';
+    thead.innerHTML = headHtml;
+
     tbody.innerHTML = '';
     const kws = getSiteKeywords();
+    const errImg = "this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5Y2EzYWYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCI+PC9jaXJjbGU+PGxpbmUgeDE9IjIiIHkxPSIxMiIgeDI9IjIyIiB5Mj0iMTIiPjwvbGluZT48cGF0aCBkPSJNMTIgMmExNS4zIDE1LjMgMCAwIDEgNCAxMGExNS4zIDE1LjMgMCAwIDEtNCAxMCAxNS4zIDE1LjMgMCAwIDEtNC0xMCAxNS4zIDE1LjMgMCAwIDEgNC0xMHoiPjwvcGF0aD48L3N2Zz4='";
 
     sites.forEach(site => {
-        const tr = document.createElement('tr');
-        const wkClickTrend = calcChangeObj(site.wkCurC, site.wkPrevC);
-        const moClickTrend = calcChangeObj(site.moCurC, site.moPrevC);
         const kwVal = kws[site.domain] || 0;
         const faviconUrl = 'https://www.google.com/s2/favicons?domain=' + site.domain + '&sz=64';
+        const domainCell = '<td><div class="site-name-col"><img src="' + faviconUrl + '" class="domain-icon" onerror="' + errImg + '">' + site.domain + '</div></td>';
+        const tr = document.createElement('tr');
 
-        tr.innerHTML = `
-            <td>
-                <div class="site-name-col">
-                    <img src="${faviconUrl}" class="domain-icon" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5Y2EzYWYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCI+PC9jaXJjbGU+PGxpbmUgeDE9IjIiIHkxPSIxMiIgeDI9IjIyIiB5Mj0iMTIiPjwvbGluZT48cGF0aCBkPSJNMTIgMmExNS4zIDE1LjMgMCAwIDEgNCAxMGExNS4zIDE1LjMgMCAwIDEtNCAxMCAxNS4zIDE1LjMgMCAwIDEtNC0xMCAxNS4zIDE1LjMgMCAwIDEgNC0xMHoiPjwvcGF0aD48L3N2Zz4='">
-                    ${site.domain}
-                </div>
-            </td>
-            <td><input type="number" class="keyword-input" value="${kwVal}" placeholder="0" onblur="updateKwInput('${site.domain}', this)"></td>
-            <td style="font-weight: 600; color: #6366F1;">${site.wkCurC.toLocaleString('en-US')}</td>
-            <td>${site.wkCurI.toLocaleString('en-US')}</td>
-            <td>${site.wkPrevC.toLocaleString('en-US')}</td>
-            <td><span class="pct-badge ${wkClickTrend.class}">${wkClickTrend.str}</span></td>
-            
-            <td style="font-weight: 600; color: #8B5CF6;">${site.moCurC.toLocaleString('en-US')}</td>
-            <td>${site.moPrevC.toLocaleString('en-US')}</td>
-            <td><span class="pct-badge ${moClickTrend.class}">${moClickTrend.str}</span></td>
-        `;
-        tbody.appendChild(tr);
+        if (currentViewMode === 'clicks') {
+            const wT = calcChangeObj(site.wkCurC, site.wkPrevC);
+            const mT = calcChangeObj(site.moCurC, site.moPrevC);
+            tr.innerHTML = domainCell +
+                '<td><input type="number" class="keyword-input" value="' + kwVal + '" placeholder="0" onblur="updateKwInput(\'' + site.domain + '\', this)"></td>' +
+                '<td style="font-weight:600;color:#6366F1">' + site.wkCurC.toLocaleString('en-US') + '</td>' +
+                '<td>' + site.wkPrevC.toLocaleString('en-US') + '</td>' +
+                '<td><span class="pct-badge ' + wT.class + '">' + wT.str + '</span></td>' +
+                '<td style="font-weight:600;color:#8B5CF6">' + site.moCurC.toLocaleString('en-US') + '</td>' +
+                '<td>' + site.moPrevC.toLocaleString('en-US') + '</td>' +
+                '<td><span class="pct-badge ' + mT.class + '">' + mT.str + '</span></td>';
+            tbody.appendChild(tr);
+
+        } else if (currentViewMode === 'impressions') {
+            const wT = calcChangeObj(site.wkCurI, site.wkPrevI);
+            const mT = calcChangeObj(site.moCurI, site.moPrevI);
+            const safeId = site.domain.replace(/\./g, '_');
+            tr.innerHTML = domainCell +
+                '<td><button onclick="toggleKeywordRow(\'' + safeId + '\')" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);color:#818CF8;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">\uD83D\uDD0D Top t\u1EEB kh\u00F3a</button></td>' +
+                '<td style="font-weight:600;color:#10B981">' + site.wkCurI.toLocaleString('en-US') + '</td>' +
+                '<td>' + site.wkPrevI.toLocaleString('en-US') + '</td>' +
+                '<td><span class="pct-badge ' + wT.class + '">' + wT.str + '</span></td>' +
+                '<td style="font-weight:600;color:#34D399">' + site.moCurI.toLocaleString('en-US') + '</td>' +
+                '<td>' + site.moPrevI.toLocaleString('en-US') + '</td>' +
+                '<td><span class="pct-badge ' + mT.class + '">' + mT.str + '</span></td>';
+            tbody.appendChild(tr);
+
+            // Expandable keyword row
+            const kwArr = (globalGSCKeywords && globalGSCKeywords[site.siteUrl]) ? globalGSCKeywords[site.siteUrl] : [];
+            const kwTr = document.createElement('tr');
+            kwTr.id = 'kw-row-' + safeId;
+            kwTr.className = 'keyword-expand-row';
+            kwTr.style.display = 'none';
+            const pills = kwArr.length > 0
+                ? kwArr.map(k => '<div class="kw-pill">' + k.keyword + ' <strong>' + k.impressions.toLocaleString() + '</strong></div>').join('')
+                : '<span style="color:#6B7280;font-size:12px;font-style:italic;">Ch\u01B0a c\u00F3 d\u1EEF li\u1EC7u. Nh\u1EA5n "C\u1EADp nh\u1EADt GSC API" \u0111\u1EC3 t\u1EA3i t\u1EEB kh\u00F3a.</span>';
+            kwTr.innerHTML = '<td colspan="8"><div class="keyword-expand-content">' + pills + '</div></td>';
+            tbody.appendChild(kwTr);
+
+        } else {
+            tr.innerHTML = domainCell +
+                '<td style="font-weight:600;color:#F59E0B">' + site.wkCurCtr.toFixed(2) + '%</td>' +
+                '<td>' + site.wkPrevCtr.toFixed(2) + '%</td>' +
+                '<td style="font-weight:600;color:#EC4899">' + (site.wkCurPos > 0 ? site.wkCurPos.toFixed(1) : '-') + '</td>' +
+                '<td style="font-weight:600;color:#F59E0B">' + site.moCurCtr.toFixed(2) + '%</td>' +
+                '<td>' + site.moPrevCtr.toFixed(2) + '%</td>' +
+                '<td style="font-weight:600;color:#EC4899">' + (site.moCurPos > 0 ? site.moCurPos.toFixed(1) : '-') + '</td>';
+            tbody.appendChild(tr);
+        }
     });
 
     renderTableFooter();
@@ -563,32 +643,44 @@ async function fetchGSCData(accessToken, isSilent = false) {
         const endDt = new Date(); const startDt = new Date(endDt); startDt.setDate(startDt.getDate() - 59);
         const formatDate = (date) => date.toISOString().split('T')[0];
         const bodyStyle = { startDate: formatDate(startDt), endDate: formatDate(endDt), dimensions: ['date'] };
+        const queryBodyStyle = { startDate: formatDate(startDt), endDate: formatDate(endDt), dimensions: ['query'], rowLimit: 15 };
 
         let siteAggregated = {};
-        matchedSites.forEach(s => { siteAggregated[s.siteUrl] = {}; });
+        let siteAggregatedKw = {};
 
         await Promise.all(matchedSites.map(async (siteObj) => {
+            siteAggregated[siteObj.siteUrl] = {};
+            siteAggregatedKw[siteObj.siteUrl] = [];
             try {
-                const statsRes = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
-                    method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(bodyStyle)
-                });
+                const [statsRes, kwRes] = await Promise.all([
+                    fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
+                        method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(bodyStyle)
+                    }),
+                    fetch('https://searchconsole.googleapis.com/webmasters/v3/sites/' + encodeURIComponent(siteObj.siteUrl) + '/searchAnalytics/query', {
+                        method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(queryBodyStyle)
+                    })
+                ]);
                 const statsData = await statsRes.json();
                 if (statsData.rows) {
                     statsData.rows.forEach(r => {
-                        siteAggregated[siteObj.siteUrl][r.keys[0]] = { clicks: r.clicks, impressions: r.impressions };
+                        siteAggregated[siteObj.siteUrl][r.keys[0]] = { clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position };
                     });
+                }
+                const kwData = await kwRes.json();
+                if (kwData.rows) {
+                    siteAggregatedKw[siteObj.siteUrl] = kwData.rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position }));
                 }
             } catch (e) { console.error('Lỗi khi tải:', siteObj.siteUrl); }
         }));
 
         if (!globalGSCData) globalGSCData = {};
-        for (let url in siteAggregated) {
-            globalGSCData[url] = siteAggregated[url];
-        }
+        for (let url in siteAggregated) { globalGSCData[url] = siteAggregated[url]; }
+        if (!globalGSCKeywords) globalGSCKeywords = {};
+        for (let url in siteAggregatedKw) { globalGSCKeywords[url] = siteAggregatedKw[url]; }
         isGscConnected = true;
 
         // Lưu VĨNH VIỄN LÊN TRÌNH DUYỆT ĐỂ FIX LỖI F5 !
-        saveLocalBackup(globalGSCData);
+        saveLocalBackup(globalGSCData, globalGSCKeywords);
 
         // Đồng bộ lên DATABASE ngay lập tức
         pushDataToFirebase();
