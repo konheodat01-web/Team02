@@ -289,13 +289,28 @@ function processAndRenderRealData(period) {
     Object.keys(globalGSCData).forEach(siteUrl => {
         const siteData = globalGSCData[siteUrl];
 
-        let wkCurC = 0, wkPrevC = 0, wkCurI = 0;
-        let moCurC = 0, moPrevC = 0;
+        let wkCurC = 0, wkPrevC = 0, wkCurI = 0, wkPrevI = 0;
+        let moCurC = 0, moPrevC = 0, moCurI = 0, moPrevI = 0;
+        let wkPosCur = 0, wkImpPos = 0, moPosCur = 0, moImpPos = 0;
 
-        weekCurDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; wkCurC += i.clicks; wkCurI += i.impressions; });
-        weekPrevDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; wkPrevC += i.clicks; });
-        monthCurDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; moCurC += i.clicks; });
-        monthPrevDates.forEach(dt => { const i = siteData[dt] || { clicks: 0, impressions: 0 }; moPrevC += i.clicks; });
+        weekCurDates.forEach(dt => {
+            const i = siteData[dt] || { clicks: 0, impressions: 0, position: 0 };
+            wkCurC += i.clicks; wkCurI += i.impressions;
+            if (i.impressions > 0) { wkPosCur += (i.position || 0) * i.impressions; wkImpPos += i.impressions; }
+        });
+        weekPrevDates.forEach(dt => {
+            const i = siteData[dt] || { clicks: 0, impressions: 0 };
+            wkPrevC += i.clicks; wkPrevI += i.impressions;
+        });
+        monthCurDates.forEach(dt => {
+            const i = siteData[dt] || { clicks: 0, impressions: 0, position: 0 };
+            moCurC += i.clicks; moCurI += i.impressions;
+            if (i.impressions > 0) { moPosCur += (i.position || 0) * i.impressions; moImpPos += i.impressions; }
+        });
+        monthPrevDates.forEach(dt => {
+            const i = siteData[dt] || { clicks: 0, impressions: 0 };
+            moPrevC += i.clicks; moPrevI += i.impressions;
+        });
 
         let curClick = 0, prevClick = 0, curImp = 0, prevImp = 0;
         activeCurDates.forEach((dt, idx) => {
@@ -322,8 +337,15 @@ function processAndRenderRealData(period) {
 
         siteBreakdown.push({
             domain: cleanDomain,
-            wkCurC, wkPrevC, wkCurI,
-            moCurC, moPrevC
+            siteUrl,
+            wkCurC, wkPrevC, wkCurI, wkPrevI,
+            moCurC, moPrevC, moCurI, moPrevI,
+            wkCurCtr: wkCurI > 0 ? (wkCurC / wkCurI * 100) : 0,
+            wkPrevCtr: wkPrevI > 0 ? (wkPrevC / wkPrevI * 100) : 0,
+            wkCurPos: wkImpPos > 0 ? (wkPosCur / wkImpPos) : 0,
+            moCurCtr: moCurI > 0 ? (moCurC / moCurI * 100) : 0,
+            moPrevCtr: moPrevI > 0 ? (moPrevC / moPrevI * 100) : 0,
+            moCurPos: moImpPos > 0 ? (moPosCur / moImpPos) : 0
         });
     });
 
