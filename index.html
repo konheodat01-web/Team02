@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SEO Dashboard - Báo Cáo Tổng Hợp</title>
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -98,27 +98,37 @@
 
             <!-- Table Section -->
             <div class="table-section">
-                <div class="table-header" style="margin-top: 24px; margin-bottom: 16px;">
+                <div class="table-header" style="margin-top: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                     <h3 style="font-size: 16px; font-weight: 600; color: #F3F4F6;">Bảng Theo Dõi Tổng Hợp</h3>
+                    <div style="display: flex; background: rgba(30, 41, 59, 0.8); padding: 4px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); gap: 2px;">
+                        <button class="view-tab active" data-view="clicks" id="tab-clicks" style="display:flex; align-items:center; gap:6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: rgba(99,102,241,0.25); color: #818CF8; transition: all 0.2s;">
+                            🖱️ Lượt Clicks
+                        </button>
+                        <button class="view-tab" data-view="impressions" id="tab-impressions" style="display:flex; align-items:center; gap:6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: #6B7280; transition: all 0.2s;">
+                            👁️ Lượt Hiển Thị
+                        </button>
+                        <button class="view-tab" data-view="traffic" id="tab-traffic" style="display:flex; align-items:center; gap:6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: #6B7280; transition: all 0.2s;">
+                            ⚡ Traffic & Vị Trí
+                        </button>
+                    </div>
                 </div>
                 <div class="table-responsive" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; overflow-x: auto;">
                     <table class="data-table spreadsheet-table">
-                        <thead>
+                        <thead id="siteTableHead">
                             <tr>
                                 <th>Website</th>
-                                <th>Số lượng Keyword</th>
+                                <th>Keyword (SEO)</th>
                                 <th>Clicks (Tuần này)</th>
-                                <th>Impression (Tuần này)</th>
                                 <th>Clicks (Tuần trước)</th>
-                                <th>So sánh Tuần (%)</th>
+                                <th>So sánh (%)</th>
                                 <th>Clicks (Tháng này)</th>
                                 <th>Clicks (Tháng trước)</th>
-                                <th>So sánh Tháng (%)</th>
+                                <th>So sánh (%)</th>
                             </tr>
                         </thead>
                         <tbody id="siteTableBody">
                             <tr>
-                                <td colspan="9" style="text-align: center; padding: 24px; color: #6B7280; font-style: italic;">
+                                <td colspan="8" style="text-align: center; padding: 24px; color: #6B7280; font-style: italic;">
                                     Đang đợi dữ liệu GSC...
                                 </td>
                             </tr>
@@ -129,6 +139,7 @@
                     </table>
                 </div>
             </div>
+
 
         </main>
     </div>
@@ -154,6 +165,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
 </body>
 </html>
