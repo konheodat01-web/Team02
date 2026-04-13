@@ -200,10 +200,14 @@ function initMockData() {
     renderDashboard('weekly');
 }
 
+let renderTimer = null;
 function renderDashboard(period) {
-    if (isGscConnected && globalGSCData) {
-        processAndRenderRealData(period);
-    }
+    if (renderTimer) clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+        if (isGscConnected && globalGSCData) {
+            processAndRenderRealData(period);
+        }
+    }, 500); // Throttles processing to max 1 per 500ms
 }
 
 // Process Real GSC Data dynamically
