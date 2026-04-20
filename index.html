@@ -61,6 +61,9 @@
                     <button id="gscLoginBtn" class="btn btn-secondary flex-row-center" style="display: flex;">
                         <i data-lucide="log-in" style="width: 16px;"></i> Kết nối GSC
                     </button>
+                    <button id="manageSitesBtn" class="btn btn-secondary flex-row-center" style="display: flex;">
+                        <i data-lucide="settings" style="width: 16px;"></i> Quản lý Website
+                    </button>
                     <div class="time-filter">
                         <button class="filter-btn active" data-period="weekly">Theo Tuần</button>
                         <button class="filter-btn" data-period="monthly">Theo Tháng</button>
@@ -161,6 +164,26 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelEditBtn">Hủy</button>
                 <button class="btn btn-primary" id="saveEditBtn">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Sites Modal -->
+    <div id="manageSitesModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Quản lý Website (GSC)</h3>
+                <button class="close-modal-btn" id="closeManageSitesBtn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="sitesTextarea">Danh sách Domain (mỗi website 1 dòng không chứa http)</label>
+                    <textarea id="sitesTextarea" class="form-control" style="height: 200px; resize: vertical;" autocomplete="off"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelManageSitesBtn">Hủy</button>
+                <button class="btn btn-primary" id="saveManageSitesBtn">Lưu thay đổi</button>
             </div>
         </div>
     </div>

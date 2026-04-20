@@ -14,6 +14,25 @@ let globalSiteBreakdown = [];
 let currentViewMode = 'clicks';
 
 // Local Storage Handlers
+function getTargetDomains() {
+    const defaultDomains = [
+        'vidcogroup.com', 'kuromi.vn', 'tranhalinh.org', 'duyhoang.vn', 'dulich24h.net',
+        'duansungroups.com', 'dadiland.com', 'thanhhungtrans.com', 'cafelegend.vn',
+        'healthpark.com.vn', 'banmat.vn', 'gamingpcguru.com', 'quanche.vn',
+        'lynkcohanoi5s.com', 'lynkcotoanquoc.com', 'zeekrvietnams.vn', 'nuocmamvn.vn'
+    ];
+    try {
+        const stored = localStorage.getItem('targetDomains');
+        if (stored) return JSON.parse(stored);
+    } catch(e) {}
+    return defaultDomains;
+}
+
+function saveTargetDomains(domains) {
+    localStorage.setItem('targetDomains', JSON.stringify(domains));
+    pushDataToFirebase();
+}
+
 function getCustomStats() { return JSON.parse(localStorage.getItem('customStats') || '{}'); }
 function saveCustomStat(id, value) {
     const customStats = getCustomStats();
@@ -105,6 +124,9 @@ function initFirebaseDatabase() {
                     for(let k in data.siteKeywords) orgKw[decodeFBKey(k)] = data.siteKeywords[k];
                     localStorage.setItem('siteKeywords', JSON.stringify(orgKw));
                 }
+                if (data.targetDomains) {
+                    localStorage.setItem('targetDomains', JSON.stringify(data.targetDomains));
+                }
 
                 const t = new Date(data.lastUpdated);
                 const timeStr = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ' ' + ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2);
@@ -144,6 +166,7 @@ function pushDataToFirebase() {
         gscKwData: safeGscKwData,
         customStats: getCustomStats(),
         siteKeywords: safeKws,
+        targetDomains: getTargetDomains(),
         lastUpdated: Date.now()
     };
     fbDB.ref('dashboard_data').set(payload).catch(e => console.error("Lỗi Push DB:", e));
@@ -205,6 +228,33 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('closeModalBtn').addEventListener('click', closeModal);
     document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
     document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
+
+    const manageBtn = document.getElementById('manageSitesBtn');
+    if (manageBtn) {
+        manageBtn.addEventListener('click', () => {
+            const domains = getTargetDomains();
+            document.getElementById('sitesTextarea').value = domains.join('\n');
+            document.getElementById('manageSitesModal').classList.add('active');
+            document.getElementById('sitesTextarea').focus();
+        });
+    }
+    const closeManageModal = () => {
+        const modal = document.getElementById('manageSitesModal');
+        if(modal) modal.classList.remove('active');
+    };
+    document.getElementById('closeManageSitesBtn')?.addEventListener('click', closeManageModal);
+    document.getElementById('cancelManageSitesBtn')?.addEventListener('click', closeManageModal);
+    document.getElementById('saveManageSitesBtn')?.addEventListener('click', () => {
+        const text = document.getElementById('sitesTextarea').value;
+        // Parse lines, format URLs/domains (remove http:// and trailing slash)
+        const domains = text.split('\n')
+            .map(d => d.trim().replace(/^https?:\/\//i, '').replace(/\/$/, ''))
+            .filter(d => d.length > 0);
+        
+        saveTargetDomains(domains);
+        closeManageModal();
+        alert('Đã lưu danh sách website! Hãy bấm "Cập nhật GSC API" trên góc phải tải số liệu mới nhất.');
+    });
 
     // View mode tab switcher
     document.querySelectorAll('.view-tab').forEach(btn => {
@@ -375,7 +425,20 @@ function processAndRenderRealData(period) {
     renderCards(stats);
     renderCharts(chartData);
 
-    siteBreakdown.sort((a, b) => b.moCurC - a.moCurC);
+    // Sort by best metric for each view mode
+    if (currentViewMode === 'impressions') {
+        siteBreakdown.sort((a, b) => b.moCurI - a.moCurI);
+    } else if (currentViewMode === 'traffic') {
+        // Higher CTR = better; if CTR equal, lower position = better
+        siteBreakdown.sort((a, b) => {
+            if (Math.abs(b.moCurCtr - a.moCurCtr) > 0.01) return b.moCurCtr - a.moCurCtr;
+            const posA = a.moCurPos > 0 ? a.moCurPos : 999;
+            const posB = b.moCurPos > 0 ? b.moCurPos : 999;
+            return posA - posB;
+        });
+    } else {
+        siteBreakdown.sort((a, b) => b.moCurC - a.moCurC);
+    }
     renderDataTable(siteBreakdown);
     lucide.createIcons();
 }
@@ -647,12 +710,7 @@ async function fetchGSCData(accessToken, isSilent = false) {
         }
 
         const siteData = await siteRes.json();
-        const targetDomains = [
-            'vidcogroup.com', 'kuromi.vn', 'tranhalinh.org', 'duyhoang.vn', 'dulich24h.net',
-            'duansungroups.com', 'dadiland.com', 'thanhhungtrans.com', 'cafelegend.vn',
-            'healthpark.com.vn', 'banmat.vn', 'gamingpcguru.com', 'quanche.vn',
-            'lynkcohanoi5s.com', 'lynkcotoanquoc.com', 'zeekrvietnams.vn', 'nuocmamvn.vn'
-        ];
+        const targetDomains = getTargetDomains();
 
         const matchedSites = siteData.siteEntry ? siteData.siteEntry.filter(e => targetDomains.some(d => e.siteUrl.includes(d))) : [];
 
