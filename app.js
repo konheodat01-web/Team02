@@ -893,8 +893,8 @@ async function fetchSheetData(accessToken, sheetId, range) {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         
-        if (res.status === 401 || res.status === 403) {
-            alert('Lỗi quyền (Token hết hạn hoặc bạn chưa đánh dấu cấp quyền Google Sheets lúc đăng nhập). Xin hãy qua tab Tổng quan nhấn Kết nối GSC lại!');
+        if (res.status === 401) {
+            alert('Lỗi quyền: Token hết hạn. Xin hãy qua tab Tổng quan nhấn Kết nối GSC lại!');
             localStorage.removeItem('gsc_token');
             if (btn) btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px;"></i> Đồng bộ Sheets';
             lucide.createIcons();
@@ -903,7 +903,7 @@ async function fetchSheetData(accessToken, sheetId, range) {
         
         if (!res.ok) {
             const errorText = await res.text();
-            alert('Lỗi tải Sheets (Kiểm tra lại ID): ' + errorText);
+            alert('Lỗi khi tải từ Google Sheets: ' + errorText);
             if (btn) btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px;"></i> Đồng bộ Sheets';
             lucide.createIcons();
             return;
