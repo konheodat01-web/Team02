@@ -335,9 +335,12 @@ function processAndRenderRealData(period) {
     const chartCurrentImp = new Array(rangeSize).fill(0);
 
     const siteBreakdown = [];
+    const targetDomainsList = getTargetDomains();
 
-    Object.keys(globalGSCData).forEach(siteUrl => {
-        const siteData = globalGSCData[siteUrl];
+    targetDomainsList.forEach(domain => {
+        const existingKey = Object.keys(globalGSCData).find(k => k.includes(domain));
+        const siteUrl = existingKey ? existingKey : `sc-domain:${domain}`;
+        const siteData = existingKey ? globalGSCData[existingKey] : {};
 
         let wkCurC = 0, wkPrevC = 0, wkCurI = 0, wkPrevI = 0;
         let moCurC = 0, moPrevC = 0, moCurI = 0, moPrevI = 0;
