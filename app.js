@@ -229,6 +229,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
     document.getElementById('saveEditBtn').addEventListener('click', saveManualData);
 
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', exportToCSV);
+    }
+
     const manageBtn = document.getElementById('manageSitesBtn');
     if (manageBtn) {
         manageBtn.addEventListener('click', () => {
@@ -784,4 +789,41 @@ async function fetchGSCData(accessToken, isSilent = false) {
         console.error(err); setLoginState(false);
         if (!isSilent) alert('Lỗi tải dữ liệu. Vui lòng chụp màn hình này gửi em nhé: \n\n' + err.message + '\n' + err.stack);
     }
+}
+
+// Export to CSV
+function exportToCSV() {
+    if (!globalSiteBreakdown || globalSiteBreakdown.length === 0) {
+        alert("Chưa có dữ liệu để xuất!");
+        return;
+    }
+    
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+    csvContent += "Website,Keyword (SEO),Clicks (Tuan nay),Clicks (Tuan truoc),Impressions (Tuan nay),Impressions (Tuan truoc),CTR (Tuan nay),Vi tri (Tuan nay),Clicks (Thang nay),Clicks (Thang truoc),Impressions (Thang nay),Impressions (Thang truoc),CTR (Thang nay),Vi tri (Thang nay)\n";
+    
+    const kws = getSiteKeywords();
+    globalSiteBreakdown.forEach(site => {
+        const kwVal = kws[site.domain] || 0;
+        const row = [
+            site.domain, kwVal,
+            site.wkCurC, site.wkPrevC,
+            site.wkCurI, site.wkPrevI,
+            site.wkCurCtr.toFixed(2) + "%",
+            site.wkCurPos > 0 ? site.wkCurPos.toFixed(1) : "-",
+            site.moCurC, site.moPrevC,
+            site.moCurI, site.moPrevI,
+            site.moCurCtr.toFixed(2) + "%",
+            site.moCurPos > 0 ? site.moCurPos.toFixed(1) : "-"
+        ];
+        csvContent += row.join(",") + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute("download", `SEO_Report_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }

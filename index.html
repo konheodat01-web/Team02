@@ -102,7 +102,12 @@
             <!-- Table Section -->
             <div class="table-section">
                 <div class="table-header" style="margin-top: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                    <h3 style="font-size: 16px; font-weight: 600; color: #F3F4F6;">Bảng Theo Dõi Tổng Hợp</h3>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <h3 style="font-size: 16px; font-weight: 600; color: #F3F4F6; margin: 0;">Bảng Theo Dõi Tổng Hợp</h3>
+                        <button id="exportCsvBtn" class="btn btn-secondary" style="display:flex; align-items:center; gap:6px; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; height: 30px; border-color: rgba(99,102,241,0.3); color: #818CF8;">
+                            <i data-lucide="download" style="width: 14px; height: 14px;"></i> Xuất CSV
+                        </button>
+                    </div>
                     <div style="display: flex; background: rgba(30, 41, 59, 0.8); padding: 4px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); gap: 2px;">
                         <button class="view-tab active" data-view="clicks" id="tab-clicks" style="display:flex; align-items:center; gap:6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: rgba(99,102,241,0.25); color: #818CF8; transition: all 0.2s;">
                             🖱️ Lượt Clicks
