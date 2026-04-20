@@ -27,11 +27,11 @@
             
             <nav class="nav-menu">
                 <div class="menu-label">Menu Chính</div>
-                <a href="#" class="nav-item active">
+                <a href="#" class="nav-item active" id="nav-overview">
                     <i data-lucide="layout-dashboard"></i>
                     <span>Tổng Quan</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="#" class="nav-item" id="nav-network">
                     <i data-lucide="globe"></i>
                     <span>Mạng Lưới Web</span>
                 </a>
@@ -52,7 +52,9 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <header class="header">
+            <!-- VIEW: DASHBOARD OVERVIEW -->
+            <div id="view-dashboard">
+                <header class="header">
                 <div class="header-title">
                     <h1>Báo Cáo Hiệu Suất Hệ Thống <span class="pulse-indicator"></span></h1>
                     <p class="subtitle">Thống kê traffic, clicks và hiển thị từ các dự án web</p>
@@ -148,6 +150,62 @@
                 </div>
             </div>
 
+            </div>
+
+            <!-- VIEW: NETWORK (GOOGLE SHEETS) -->
+            <div id="view-network" style="display: none;">
+                <header class="header" style="margin-bottom: 24px;">
+                    <div class="header-title">
+                        <h1>Quản trị Mạng lưới PBN</h1>
+                        <p class="subtitle">Dữ liệu được đồng bộ từ Google Sheets cá nhân của bạn</p>
+                    </div>
+                    <div class="header-actions" style="display: flex; gap: 16px; align-items: center;">
+                        <button id="syncSheetBtn" class="btn btn-primary flex-row-center" style="display: flex;">
+                            <i data-lucide="refresh-cw" style="width: 16px;"></i> Đồng bộ Sheets
+                        </button>
+                    </div>
+                </header>
+
+                <div class="chart-card" style="margin-bottom: 24px;">
+                    <div class="card-header" style="margin-bottom: 16px;">
+                        <h2>Cấu hình Google Sheets</h2>
+                    </div>
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                        <div class="form-group" style="flex: 2; min-width: 300px;">
+                            <label for="sheetIdInput">ID Trang Tínht (Ví dụ: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms)</label>
+                            <input type="text" id="sheetIdInput" class="form-control" placeholder="Dán ID Trang tính vào đây...">
+                        </div>
+                        <div class="form-group" style="flex: 1; min-width: 150px;">
+                            <label for="sheetRangeInput">Vùng dữ liệu (Ví dụ: Sheet1!A:E)</label>
+                            <input type="text" id="sheetRangeInput" class="form-control" placeholder="Sheet1!A:E">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-section">
+                    <div class="table-responsive" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>STT</th>
+                                    <th>Website Gốc</th>
+                                    <th>Website 301</th>
+                                    <th>Đuôi Quản Trị</th>
+                                    <th>Tài Khoản</th>
+                                    <th>Mật Khẩu</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sheetTableBody">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 24px; color: #6B7280; font-style: italic;">
+                                        Nhập ID Trang Tính và bấm "Đồng bộ Sheets" để tải dữ liệu...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
         </main>
     </div>

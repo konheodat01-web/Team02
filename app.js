@@ -277,6 +277,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Navigation logic (SPA)
+    const navOverview = document.getElementById('nav-overview');
+    const navNetwork = document.getElementById('nav-network');
+    const viewDashboard = document.getElementById('view-dashboard');
+    const viewNetwork = document.getElementById('view-network');
+
+    navOverview?.addEventListener('click', (e) => {
+        e.preventDefault();
+        navOverview.classList.add('active');
+        navNetwork.classList.remove('active');
+        viewDashboard.style.display = 'block';
+        if(viewNetwork) viewNetwork.style.display = 'none';
+        lucide.createIcons();
+    });
+
+    navNetwork?.addEventListener('click', (e) => {
+        e.preventDefault();
+        navNetwork.classList.add('active');
+        navOverview.classList.remove('active');
+        viewDashboard.style.display = 'none';
+        if(viewNetwork) viewNetwork.style.display = 'block';
+        
+        // Load configurations
+        if (!document.getElementById('sheetIdInput').value) {
+            document.getElementById('sheetIdInput').value = localStorage.getItem('pbnSheetId') || '';
+            document.getElementById('sheetRangeInput').value = localStorage.getItem('pbnSheetRange') || 'Sheet1!A:E';
+        }
+        
+        // Auto fetch if there is token and ID and the table is still empty
+        const token = localStorage.getItem('gsc_token');
+        const sheetId = localStorage.getItem('pbnSheetId');
+        if (token && sheetId && document.getElementById('sheetTableBody')?.children.length <= 1) {
+            fetchSheetData(token, sheetId, localStorage.getItem('pbnSheetRange') || 'Sheet1!A:E');
+        }
+    });
+
+    document.getElementById('syncSheetBtn')?.addEventListener('click', () => {
+        const sheetId = document.getElementById('sheetIdInput').value.trim();
+        const range = document.getElementById('sheetRangeInput').value.trim() || 'Sheet1!A:E';
+        if (!sheetId) {
+            alert('Vui lòng nhập ID trang tính!');
+            return;
+        }
+        localStorage.setItem('pbnSheetId', sheetId);
+        localStorage.setItem('pbnSheetRange', range);
+
+        const token = localStorage.getItem('gsc_token');
+        if (!token) {
+            alert('Chưa có xác thực Google. Hãy qua tab Tổng Quan ấn "Kết nối GSC" (hoặc Nạp lại bản quyền) để cấp quyền đọc Sheet nhé!');
+            return;
+        }
+        fetchSheetData(token, sheetId, range);
+    });
+
     initGoogleAuth();
 });
 
@@ -689,7 +743,7 @@ function initGoogleAuth() {
 
     if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
     tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID, scope: 'https://www.googleapis.com/auth/webmasters.readonly', prompt: '',
+        client_id: CLIENT_ID, scope: 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/spreadsheets.readonly', prompt: '',
         callback: (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
                 localStorage.setItem('gsc_token', tokenResponse.access_token);
@@ -827,3 +881,89 @@ function exportToCSV() {
     link.click();
     document.body.removeChild(link);
 }
+
+// Thêm logic tải Google Sheets
+async function fetchSheetData(accessToken, sheetId, range) {
+    const btn = document.getElementById('syncSheetBtn');
+    if (btn) btn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i> Đang tải...';
+    lucide.createIcons();
+    
+    try {
+        const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        
+        if (res.status === 401 || res.status === 403) {
+            alert('Lỗi quyền (Token hết hạn hoặc bạn chưa đánh dấu cấp quyền Google Sheets lúc đăng nhập). Xin hãy qua tab Tổng quan nhấn Kết nối GSC lại!');
+            localStorage.removeItem('gsc_token');
+            if (btn) btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px;"></i> Đồng bộ Sheets';
+            lucide.createIcons();
+            return;
+        }
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            alert('Lỗi tải Sheets (Kiểm tra lại ID): ' + errorText);
+            if (btn) btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px;"></i> Đồng bộ Sheets';
+            lucide.createIcons();
+            return;
+        }
+
+        const data = await res.json();
+        const rows = data.values;
+        const tbody = document.getElementById('sheetTableBody');
+        
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Không có dữ liệu trong vùng này</td></tr>';
+        } else {
+            tbody.innerHTML = '';
+            // Render từng dòng
+            rows.forEach((row, index) => {
+                if(index === 0 && row[0]?.toLowerCase().includes('website')) return; // Bỏ tiêu đề
+                
+                const tr = document.createElement('tr');
+                const webGoc = row[0] || '';
+                const web301 = row[1] || '';
+                const adminUrl = row[2] || '';
+                const tk = row[3] || '';
+                const mk = row[4] || '';
+                
+                const safeMk = mk.replace(/"/g, '&quot;');
+                
+                tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td style="font-weight: 600; color: #F3F4F6;">${webGoc}</td>
+                    <td>${web301}</td>
+                    <td><a href="${adminUrl.startsWith('http') ? adminUrl : 'https://'+adminUrl}" target="_blank" style="color: #6366F1;">${adminUrl}</a></td>
+                    <td>${tk}</td>
+                    <td style="display:flex; align-items:center; gap:8px;">
+                        <span class="pw-box" data-pw="${safeMk}" style="font-family: monospace; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; color: #9CA3AF;">******</span>
+                        <button class="eye-btn" onclick="togglePassword(this)" style="background:transparent; border:none; cursor:pointer; color:#6B7280;" title="Hiện/Ẩn">
+                            <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Lỗi ngoại lệ: ' + err.message);
+    }
+    
+    if (btn) btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px;"></i> Đồng bộ Sheets';
+    lucide.createIcons();
+}
+
+// Logic hiện mật khẩu
+window.togglePassword = function(btn) {
+    const pwBox = btn.previousElementSibling;
+    const realPw = pwBox.getAttribute('data-pw');
+    if (pwBox.innerText === '******') {
+        pwBox.innerText = realPw || ' ';
+        pwBox.style.color = '#10B981';
+    } else {
+        pwBox.innerText = '******';
+        pwBox.style.color = '#9CA3AF';
+    }
+};
