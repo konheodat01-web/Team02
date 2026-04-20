@@ -338,8 +338,12 @@ function processAndRenderRealData(period) {
     const targetDomainsList = getTargetDomains();
 
     targetDomainsList.forEach(domain => {
-        const existingKey = Object.keys(globalGSCData).find(k => k.includes(domain));
-        const siteUrl = existingKey ? existingKey : `sc-domain:${domain}`;
+        const domainClean = domain.trim().toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '');
+        const existingKey = Object.keys(globalGSCData).find(k => {
+            const kClean = k.toLowerCase().replace('sc-domain:', '').replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '');
+            return kClean === domainClean || kClean.includes(domainClean) || domainClean.includes(kClean);
+        });
+        const siteUrl = existingKey ? existingKey : `sc-domain:${domainClean}`;
         const siteData = existingKey ? globalGSCData[existingKey] : {};
 
         let wkCurC = 0, wkPrevC = 0, wkCurI = 0, wkPrevI = 0;
@@ -715,7 +719,9 @@ async function fetchGSCData(accessToken, isSilent = false) {
         const siteData = await siteRes.json();
         const targetDomains = getTargetDomains();
 
-        const matchedSites = siteData.siteEntry ? siteData.siteEntry.filter(e => targetDomains.some(d => e.siteUrl.includes(d))) : [];
+        const matchedSites = siteData.siteEntry ? siteData.siteEntry.filter(e => 
+            targetDomains.some(d => e.siteUrl.toLowerCase().includes(d.toLowerCase().trim()))
+        ) : [];
 
         if (matchedSites.length === 0) {
             setLoginState(false);
